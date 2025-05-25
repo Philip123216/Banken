@@ -1,8 +1,8 @@
-# Customer management functions for the banking system
+# src/customer_service.py
 from datetime import datetime
 import os
-import config
-from utils import generate_id, save_json, load_json
+from . import config # RELATIV
+from .utils import generate_id, save_json, load_json # RELATIV
 
 def create_customer(name, address, birth_date_str):
     """Creates a new customer profile and saves it."""

@@ -1,8 +1,8 @@
-# Ledger management functions for the banking system
+# src/ledger_service.py
 from decimal import Decimal
 import os
-import config
-from utils import load_json, save_json
+from . import config # RELATIV
+from .utils import load_json, save_json # RELATIV
 
 def load_bank_ledger():
     """Loads the bank's ledger. Initializes if it doesn't exist."""

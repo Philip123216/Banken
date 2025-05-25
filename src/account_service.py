@@ -1,17 +1,18 @@
-# Account management functions for the banking system
+# src/account_service.py
 from datetime import datetime
 from decimal import Decimal
 import os
-from dateutil.relativedelta import relativedelta
-import config
-from utils import generate_id, save_json, load_json, parse_datetime
-from customer_service import get_customer
-from ledger_service import update_bank_ledger
+from dateutil.relativedelta import relativedelta # Externes Paket, bleibt so
+from . import config # RELATIV
+from .utils import generate_id, save_json, load_json, parse_datetime # RELATIV
+from .customer_service import get_customer # RELATIV
+from .ledger_service import update_bank_ledger # RELATIV
+
 
 def create_account(customer_id):
     """Creates a regular account and an associated (inactive) credit account for a customer."""
     # Import here to avoid circular imports
-    from time_processing_service import get_system_date
+    from .time_processing_service import get_system_date
 
     customer_data = get_customer(customer_id)
     if not customer_data:
@@ -97,18 +98,17 @@ def save_account(account_data):
     save_json(file_path, account_data)
     return True
 
-def add_transaction_to_account(account_id, transaction_data):
-    """Adds a transaction record to an account's history."""
-    account_data = get_account(account_id)
-    if not account_data:
-        print(f"Error: Account {account_id} not found for transaction.")
+def add_transaction_to_account(account_data_param, transaction_data):
+    """Adds a transaction record to an account's history using the provided account_data object."""
+    if not account_data_param:
+        print(f"Error: Invalid account_data provided to add_transaction_to_account.")
         return False
 
-    if 'transactions' not in account_data:
-        account_data['transactions'] = []
+    if 'transactions' not in account_data_param:
+        account_data_param['transactions'] = []
 
-    account_data['transactions'].append(transaction_data)
-    return save_account(account_data)
+    account_data_param['transactions'].append(transaction_data)
+    return save_account(account_data_param)
 
 def process_quarterly_fees(current_date):
     """Processes quarterly account fees for all active accounts."""
@@ -181,6 +181,6 @@ def process_quarterly_fees(current_date):
                 fees_failed += 1
 
             # Save transaction and account state
-            add_transaction_to_account(account_id, fee_tx)  # This saves the account
+            add_transaction_to_account(account_data, fee_tx)  # This saves the account
 
     print(f"--- Quarterly Fee Processing Complete. Charged: {fees_charged}, Failed: {fees_failed} ---")

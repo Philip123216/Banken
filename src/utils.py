@@ -1,10 +1,10 @@
-# Utility functions for the banking system
+# src/utils.py
 import json
 import os
 import uuid
 from decimal import Decimal
 from datetime import datetime
-import config
+from . import config # RELATIV
 
 # Custom JSON encoder for Decimal
 class DecimalEncoder(json.JSONEncoder):

@@ -1,9 +1,9 @@
 {
-  "account_id": "CRCH-4a0f24ee-f134-40c8-81b9-189db9cf805b",
-  "customer_id": "C-25d5d7a5-1565-4228-bed6-b1b7969af515",
+  "account_id": "CRCH-TESTACC002",
+  "customer_id": "C-TEST002",
   "balance": "0.00",
   "status": "inactive",
-  "created_at": "2025-05-25T12:17:31.404773",
+  "created_at": "2025-01-01T00:00:00",
   "credit_start_date": null,
   "credit_end_date": null,
   "original_amount": "0.00",

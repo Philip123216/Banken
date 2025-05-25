@@ -1,15 +1,14 @@
-# Transaction processing functions for the banking system
+# src/transaction_service.py
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
 import os
-import config
-from utils import load_json, generate_id, parse_datetime
-from account_service import get_account, add_transaction_to_account, save_account
-from customer_service import create_customer
-from account_service import create_account
-from credit_service import request_credit
-from ledger_service import update_bank_ledger
-from time_processing_service import process_time_event
+from . import config # RELATIV
+from .utils import load_json, generate_id, parse_datetime # RELATIV
+from .account_service import get_account, add_transaction_to_account, save_account, create_account # RELATIV (create_account hier zusammengefasst)
+from .customer_service import create_customer # RELATIV
+from .credit_service import request_credit # RELATIV
+from .ledger_service import update_bank_ledger # RELATIV
+from .time_processing_service import process_time_event # RELATIV
 
 def process_transfer_out(transaction_data):
     """Processes an outgoing transfer from a customer account."""
@@ -47,7 +46,7 @@ def process_transfer_out(transaction_data):
         tx_record["reason"] = f"Account not active ({account_data['status']})"
         tx_record["balance_before"] = account_data['balance']
         tx_record["balance_after"] = account_data['balance']  # Balance doesn't change
-        add_transaction_to_account(account_id, tx_record)
+        add_transaction_to_account(account_data, tx_record)
         return tx_record
 
     balance_before = account_data['balance']
@@ -57,7 +56,7 @@ def process_transfer_out(transaction_data):
         print(f"Transaction Rejected: Insufficient funds in account {account_id}.")
         tx_record["reason"] = "Insufficient funds"
         tx_record["balance_after"] = balance_before  # Balance doesn't change
-        add_transaction_to_account(account_id, tx_record)
+        add_transaction_to_account(account_data, tx_record)
         return tx_record
     else:
         # Process successful transfer
@@ -73,7 +72,7 @@ def process_transfer_out(transaction_data):
         ])
 
         # Save transaction and account state
-        add_transaction_to_account(account_id, tx_record)  # Saves the account implicitly
+        add_transaction_to_account(account_data, tx_record)  # Saves the account implicitly
 
         return tx_record
 
@@ -83,11 +82,10 @@ def process_incoming_payment(transaction_data):
     amount_str = transaction_data.get('amount', '0')
     amount = Decimal(amount_str).quantize(config.CHF_QUANTIZE, ROUND_HALF_UP)
     timestamp = transaction_data.get('timestamp', datetime.now().isoformat())
-    transaction_id = generate_id("TR")  # Can reuse prefix, ID ensures uniqueness
+    transaction_id = generate_id("TR")
 
     account_data = get_account(account_id)
 
-    # --- Create base transaction record (for history) ---
     tx_record = {
         "transaction_id": transaction_id,
         "type": "transfer_in",
@@ -95,7 +93,7 @@ def process_incoming_payment(transaction_data):
         "from_iban": transaction_data.get('from_iban'),
         "amount": amount,
         "timestamp": timestamp,
-        "status": "rejected",  # Default to rejected
+        "status": "rejected",
         "balance_before": None,
         "balance_after": None,
         "reason": ""
@@ -104,16 +102,14 @@ def process_incoming_payment(transaction_data):
     if not account_data:
         print(f"Transaction Rejected: Account {account_id} not found for incoming payment.")
         tx_record["reason"] = "Account not found"
-        # Cannot save transaction to non-existent account
         return tx_record
 
-    # Allow deposits to active or blocked accounts (to potentially unblock)
     if account_data['status'] == 'closed':
         print(f"Transaction Rejected: Account {account_id} is closed.")
         tx_record["reason"] = "Account closed"
         tx_record["balance_before"] = account_data['balance']
-        tx_record["balance_after"] = account_data['balance']  # Balance doesn't change
-        add_transaction_to_account(account_id, tx_record)
+        tx_record["balance_after"] = account_data['balance']
+        add_transaction_to_account(account_data, tx_record)
         return tx_record
 
     balance_before = account_data['balance']
@@ -123,34 +119,22 @@ def process_incoming_payment(transaction_data):
     tx_record["status"] = "completed"
     tx_record["balance_after"] = account_data['balance']
 
-    print(f"Transfer In: {amount} to {account_id}. New balance: {account_data['balance']:.2f}")
-
-    # Check if deposit unblocks the account
     if account_data['status'] == 'blocked':
-        # Simple unblock: if balance is now non-negative.
-        # Complex unblock (paying arrears) is not implemented here.
         if account_data['balance'] >= 0:
             account_data['status'] = 'active'
             print(f"Account {account_id} status changed to 'active' due to deposit.")
-            # Reset penalty accrual if unblocked? Or keep it until paid? Keep it for now.
-            # Reset missed payments count? Resetting seems reasonable upon unblocking.
             credit_account_id = f"CR{account_id}"
             credit_account_data = get_account(credit_account_id)
             if credit_account_data:
                 credit_account_data['missed_payments_count'] = 0
-                # We might need to clear accrued penalties IF the deposit covers them + arrears
-                # Simple approach: Penalties accrued remain on the credit account balance.
                 save_account(credit_account_data)
 
-    # Update Ledger
     update_bank_ledger([
         ('customer_liabilities', +amount),
         ('central_bank_assets', +amount)
     ])
 
-    # Save transaction and account state
-    add_transaction_to_account(account_id, tx_record)  # Saves the account implicitly
-
+    add_transaction_to_account(account_data, tx_record)
     return tx_record
 
 def process_transaction_file(file_path):

@@ -1,8 +1,8 @@
-# Time-related functions for the banking system
+# src/time_processing_service.py
 from datetime import datetime
 import os
-import config
-from utils import load_json, save_json, parse_datetime
+from . import config # RELATIV
+from .utils import load_json, save_json, parse_datetime # RELATIV
 
 def get_system_date():
     """Loads the current system date."""
@@ -30,8 +30,8 @@ def set_system_date(new_date):
 def process_time_event(time_event_data):
     """Processes a time event, advances the system clock, and triggers periodic functions."""
     # Import here to avoid circular imports
-    import credit_service
-    import account_service
+    from . import credit_service
+    from . import account_service
 
     new_date_str = time_event_data.get('date')
     if not new_date_str:

@@ -1,13 +1,13 @@
-# Credit management functions for the banking system
+# src/credit_service.py
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
-from dateutil.relativedelta import relativedelta
+from dateutil.relativedelta import relativedelta # Externes Paket
 import os
-import config
-from utils import generate_id, save_json, load_json, parse_datetime
-from account_service import get_account, add_transaction_to_account
-from ledger_service import update_bank_ledger
-from time_processing_service import get_system_date
+from . import config # RELATIV
+from .utils import generate_id, save_json, load_json, parse_datetime # RELATIV
+from .account_service import get_account, add_transaction_to_account, save_account # RELATIV
+from .ledger_service import update_bank_ledger # RELATIV
+from .time_processing_service import get_system_date # RELATIV
 
 def calculate_amortization(principal, annual_rate, term_months):
     """Calculates amortization schedule for a loan."""
@@ -60,14 +60,12 @@ def calculate_amortization(principal, annual_rate, term_months):
 def request_credit(transaction_data):
     """Processes a credit request, disburses funds, and charges the fee."""
     main_account_id = transaction_data.get('main_account')
-    # Credit account ID is derived
     credit_account_id = f"CR{main_account_id}"
     amount_str = transaction_data.get('amount', '0')
     requested_amount = Decimal(amount_str).quantize(config.CHF_QUANTIZE, ROUND_HALF_UP)
     timestamp = transaction_data.get('timestamp', datetime.now().isoformat())
-    system_date = parse_datetime(timestamp) or get_system_date()  # Use transaction time if possible
+    system_date = parse_datetime(timestamp) or get_system_date()
 
-    # --- Load accounts ---
     main_account = get_account(main_account_id)
     credit_account = get_account(credit_account_id)
 
@@ -175,9 +173,9 @@ def request_credit(transaction_data):
     save_json(credit_account_file_path, credit_account)
 
     # Add transactions to respective accounts
-    add_transaction_to_account(main_account_id, disburse_tx)  # Disbursement to main account
-    add_transaction_to_account(main_account_id, fee_tx)  # Fee to main account
-    add_transaction_to_account(credit_account_id, disburse_tx)  # Link disbursement to credit account too
+    add_transaction_to_account(main_account, disburse_tx)  # Disbursement to main account
+    add_transaction_to_account(main_account, fee_tx)  # Fee to main account
+    add_transaction_to_account(credit_account, disburse_tx)  # Link disbursement to credit account too
 
     return disburse_tx
 
@@ -227,8 +225,8 @@ def process_manual_credit_repayment(transaction_data):
             "reason"] = f"Invalid account status (Main: {main_account['status']}, Credit: {credit_account['status']})"
         print(f"Manual Repayment Failed: {tx_record['reason']}")
         # Save rejection to accounts if they exist
-        if main_account: add_transaction_to_account(main_account_id, tx_record)
-        if credit_account: add_transaction_to_account(credit_account_id, tx_record)
+        if main_account: add_transaction_to_account(main_account, tx_record)
+        if credit_account: add_transaction_to_account(credit_account, tx_record)
         return tx_record
 
     tx_record["account_balance_before"] = main_account['balance']
@@ -239,8 +237,8 @@ def process_manual_credit_repayment(transaction_data):
         print(f"Manual Repayment Failed: {tx_record['reason']}")
         tx_record["account_balance_after"] = main_account['balance']
         tx_record["credit_balance_after"] = credit_account['balance']
-        add_transaction_to_account(main_account_id, tx_record)
-        add_transaction_to_account(credit_account_id, tx_record)
+        add_transaction_to_account(main_account, tx_record)
+        add_transaction_to_account(credit_account, tx_record)
         return tx_record
 
     # --- Process Repayment ---
@@ -283,8 +281,8 @@ def process_manual_credit_repayment(transaction_data):
     ])
 
     # --- Save ---
-    add_transaction_to_account(main_account_id, tx_record)
-    add_transaction_to_account(credit_account_id, tx_record)
+    add_transaction_to_account(main_account, tx_record)
+    add_transaction_to_account(credit_account, tx_record)
     # Explicit saves just in case
     save_account(main_account)
     save_account(credit_account)
@@ -455,8 +453,8 @@ def process_monthly_credit_payments(current_date):
             ])
 
         # --- Save results for both success and failure ---
-        add_transaction_to_account(main_account_id, tx_record)
-        add_transaction_to_account(credit_account_id, tx_record)
+        add_transaction_to_account(main_account, tx_record)
+        add_transaction_to_account(credit_account, tx_record)
         # Explicit saves
         save_account(main_account)
         save_account(credit_account)
@@ -523,7 +521,7 @@ def calculate_daily_penalties(current_date):
         ])
 
         # Save transaction and account state
-        add_transaction_to_account(credit_account_id, tx_record)  # Saves account
+        add_transaction_to_account(credit_account, tx_record)  # Saves account
 
     print(f"--- Daily Penalties Complete. Penalties Applied: {penalty_count} ---")
 
@@ -590,6 +588,6 @@ def write_off_bad_credits(current_date):
             ])
 
             # Save transaction and account state
-            add_transaction_to_account(credit_account_id, tx_record)  # Saves account
+            add_transaction_to_account(credit_account, tx_record)  # Saves account
 
     print(f"--- Credit Write-offs Complete. Written Off: {written_off_count} ---")
