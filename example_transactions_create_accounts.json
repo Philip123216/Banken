@@ -1,0 +1,18 @@
+[
+  {
+    "type": "create_account",
+    "customer_id": "C-a0300b2c-142d-4efd-b800-767eabab20c7"
+  },
+  {
+    "type": "create_account",
+    "customer_id": "C-47af01ca-b288-442d-a8c9-268a0ec4bea3"
+  },
+  {
+    "type": "create_account",
+    "customer_id": "C-25d5d7a5-1565-4228-bed6-b1b7969af515"
+  },
+  {
+    "type": "time_event",
+    "date": "2025-04-30T00:00:00"
+  }
+]

@@ -1,0 +1,26 @@
+[
+  {
+    "type": "transfer_in",
+    "to_account": "CH-27ca4262-c623-43e3-8fdc-57fca1f7463d",
+    "amount": "5000.00",
+    "description": "Initial deposit",
+    "timestamp": "2025-05-01T09:00:00"
+  },
+  {
+    "type": "transfer_in",
+    "to_account": "CH-3cb42ac3-ddd5-44b9-92d5-667934a0bbd8",
+    "amount": "3000.00",
+    "description": "Initial deposit",
+    "timestamp": "2025-05-01T10:30:00"
+  },
+  {
+    "type": "credit_request",
+    "main_account": "CH-27ca4262-c623-43e3-8fdc-57fca1f7463d",
+    "amount": "10000.00",
+    "timestamp": "2025-05-05T14:15:00"
+  },
+  {
+    "type": "time_event",
+    "date": "2025-05-31T00:00:00"
+  }
+]

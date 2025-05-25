@@ -1,0 +1,20 @@
+[
+  {
+    "type": "create_customer",
+    "name": "Alice Wonderland",
+    "address": "1 Rabbit Hole, Wonderland",
+    "birth_date": "1990-01-15"
+  },
+  {
+    "type": "create_customer",
+    "name": "Bob Belcher",
+    "address": "1 Ocean Ave, Seymours Bay",
+    "birth_date": "1975-04-29"
+  },
+  {
+    "type": "create_customer",
+    "name": "Charlie Chaplin",
+    "address": "5 Easy Street, Vaudeville",
+    "birth_date": "1915-11-20"
+  }
+]

@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.egg
+*.sqlite3
+*.db
+
+# Virtualenv
+.venv/
+.venv_virtuell/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# IDE / Editor specific
+.idea/
+*.vscode/
+.DS_Store
+
+# Log files
+*.log
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
