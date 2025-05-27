@@ -4,7 +4,7 @@ import os
 import uuid
 from decimal import Decimal
 from datetime import datetime
-from . import config # RELATIV
+from . import config
 
 # Custom JSON encoder for Decimal
 class DecimalEncoder(json.JSONEncoder):

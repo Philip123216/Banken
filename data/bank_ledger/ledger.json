@@ -1,14 +1,14 @@
 {
   "customer_liabilities": {
-    "balance": "17750.00"
+    "balance": "101902.71"
   },
   "central_bank_assets": {
-    "balance": "8000.00"
+    "balance": "84600.00"
   },
   "credit_assets": {
-    "balance": "10000.00"
+    "balance": "19310.93"
   },
   "income": {
-    "balance": "250.00"
+    "balance": "2008.22"
   }
 }

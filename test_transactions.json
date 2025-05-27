@@ -1,0 +1,83 @@
+[
+    {
+        "type": "create_customer",
+        "name": "Edge Case Tester",
+        "address": "1 Edge Lane",
+        "birth_date": "1980-01-01"
+    },
+    {
+        "type": "create_account",
+        "customer_id": "C-879287b3-1b57-4329-9ccc-2b489f13295d"
+    },
+    {
+        "type": "transfer_in",
+        "to_account": "CH-6c53868a-9790-4a1e-b2aa-dbec3aadccc6",
+        "from_iban": "CH-EXTERNAL",
+        "amount": "12000.00",
+        "timestamp": "2025-01-01T10:00:00"
+    },
+    {
+        "type": "credit_request",
+        "main_account": "CH-6c53868a-9790-4a1e-b2aa-dbec3aadccc6",
+        "amount": "6000.00",
+        "timestamp": "2025-01-01T12:00:00"
+    },
+    {
+        "type": "manual_credit_repayment",
+        "main_account": "CH-6c53868a-9790-4a1e-b2aa-dbec3aadccc6",
+        "credit_account": "CRCH-6c53868a-9790-4a1e-b2aa-dbec3aadccc6",
+        "amount": "2000.00",
+        "timestamp": "2025-01-02T10:00:00"
+    },
+    {
+        "type": "manual_credit_repayment",
+        "main_account": "CH-6c53868a-9790-4a1e-b2aa-dbec3aadccc6",
+        "credit_account": "CRCH-6c53868a-9790-4a1e-b2aa-dbec3aadccc6",
+        "amount": "4000.00",
+        "timestamp": "2025-01-03T10:00:00"
+    },
+    {
+        "type": "transfer_out",
+        "from_account": "CH-6c53868a-9790-4a1e-b2aa-dbec3aadccc6",
+        "to_iban": "CH-EXTERNAL",
+        "amount": "11900.00",
+        "timestamp": "2025-01-04T10:00:00"
+    },
+    {
+        "type": "time_event",
+        "date": "2025-04-01T00:00:00"
+    },
+    {
+        "type": "credit_request",
+        "main_account": "CH-6c53868a-9790-4a1e-b2aa-dbec3aadccc6",
+        "amount": "5000.00",
+        "timestamp": "2025-04-01T12:00:00"
+    },
+    {
+        "type": "time_event",
+        "date": "2025-05-01T00:00:00"
+    },
+    {
+        "type": "time_event",
+        "date": "2025-06-01T00:00:00"
+    },
+    {
+        "type": "time_event",
+        "date": "2025-07-01T00:00:00"
+    },
+    {
+        "type": "transfer_in",
+        "to_account": "CH-6c53868a-9790-4a1e-b2aa-dbec3aadccc6",
+        "from_iban": "CH-EXTERNAL",
+        "amount": "10000.00",
+        "timestamp": "2025-07-02T10:00:00"
+    },
+    {
+        "type": "time_event",
+        "date": "2025-08-01T00:00:00"
+    },
+    {
+        "type": "time_event",
+        "date": "2025-12-01T00:00:00"
+    }
+] 

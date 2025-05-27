@@ -1,8 +1,9 @@
 # src/customer_service.py
 from datetime import datetime
 import os
-from . import config # RELATIV
-from .utils import generate_id, save_json, load_json # RELATIV
+import json
+from . import config
+from .utils import generate_id, save_json, load_json
 
 def create_customer(name, address, birth_date_str):
     """Creates a new customer profile and saves it."""

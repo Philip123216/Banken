@@ -1,21 +1,21 @@
 [
   {
     "type": "transfer_in",
-    "to_account": "CH-TESTACC001",
+    "to_account": "CH-b5dc4661-7492-4d1f-897e-a6f9f0e9a4aa",
     "amount": "5000.00",
     "description": "Initial deposit Alice Test",
     "timestamp": "2025-05-01T09:00:00"
   },
   {
     "type": "transfer_in",
-    "to_account": "CH-TESTACC002",
+    "to_account": "CH-a31e0a6a-4080-438d-9b81-d93b8a5b73d8",
     "amount": "3000.00",
     "description": "Initial deposit Bob Test",
     "timestamp": "2025-05-01T10:30:00"
   },
   {
     "type": "credit_request",
-    "main_account": "CH-TESTACC001",
+    "main_account": "CH-b5dc4661-7492-4d1f-897e-a6f9f0e9a4aa",
     "amount": "10000.00",
     "timestamp": "2025-05-05T14:15:00"
   },

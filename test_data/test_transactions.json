@@ -1,0 +1,74 @@
+[
+    {
+        "type": "create_customer",
+        "name": "John Doe",
+        "address": "123 Main St, Zurich",
+        "birth_date": "1980-01-15"
+    },
+    {
+        "type": "create_customer",
+        "name": "Jane Smith",
+        "address": "456 Park Ave, Geneva",
+        "birth_date": "1985-06-20"
+    },
+    {
+        "type": "create_account",
+        "customer_id": "C-0047c6f4-e2ab-4714-8970-b02c2cd31dc1"
+    },
+    {
+        "type": "create_account",
+        "customer_id": "C-a92cc0e9-190c-40ad-989b-cfb215a911f0"
+    },
+    {
+        "type": "transfer_in",
+        "to_account": "CH-0047c6f4-e2ab-4714-8970-b02c2cd31dc1",
+        "from_iban": "DE89370400440532013000",
+        "amount": "5000.00",
+        "timestamp": "2024-03-01T10:00:00"
+    },
+    {
+        "type": "transfer_out",
+        "from_account": "CH-0047c6f4-e2ab-4714-8970-b02c2cd31dc1",
+        "to_iban": "CH9300762011623852957",
+        "amount": "1000.00",
+        "timestamp": "2024-03-01T11:00:00"
+    },
+    {
+        "type": "credit_request",
+        "account_id": "CH-0047c6f4-e2ab-4714-8970-b02c2cd31dc1",
+        "amount": "2000.00",
+        "term_months": 12,
+        "timestamp": "2024-03-01T12:00:00"
+    },
+    {
+        "type": "manual_credit_repayment",
+        "account_id": "CRCH-0047c6f4-e2ab-4714-8970-b02c2cd31dc1",
+        "amount": "200.00",
+        "timestamp": "2024-03-15T10:00:00"
+    },
+    {
+        "type": "transfer_in",
+        "to_account": "CH-a92cc0e9-190c-40ad-989b-cfb215a911f0",
+        "from_iban": "FR7630006000011234567890189",
+        "amount": "3000.00",
+        "timestamp": "2024-03-01T13:00:00"
+    },
+    {
+        "type": "time_event",
+        "event_type": "quarterly_fee",
+        "date": "2024-03-31",
+        "timestamp": "2024-03-31T23:59:59"
+    },
+    {
+        "type": "transfer_out",
+        "from_account": "CH-a92cc0e9-190c-40ad-989b-cfb215a911f0",
+        "to_iban": "IT60X0542811101000000123456",
+        "amount": "500.00",
+        "timestamp": "2024-03-02T09:00:00"
+    },
+    {
+        "type": "account_closure",
+        "account_id": "CH-a92cc0e9-190c-40ad-989b-cfb215a911f0",
+        "timestamp": "2024-03-02T10:00:00"
+    }
+] 

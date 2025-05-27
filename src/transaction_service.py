@@ -2,19 +2,20 @@
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
 import os
-from . import config # RELATIV
-from .utils import load_json, generate_id, parse_datetime # RELATIV
-from .account_service import get_account, add_transaction_to_account, save_account, create_account # RELATIV (create_account hier zusammengefasst)
-from .customer_service import create_customer # RELATIV
-from .credit_service import request_credit # RELATIV
-from .ledger_service import update_bank_ledger # RELATIV
-from .time_processing_service import process_time_event # RELATIV
+from .config import CHF_QUANTIZE
+from .utils import load_json, generate_id, parse_datetime
+from .account_service import get_account, add_transaction_to_account, save_account, create_account, close_account
+from .customer_service import create_customer
+from .credit_service import request_credit, process_manual_credit_repayment
+from .ledger_service import update_bank_ledger
+from .time_processing_service import process_time_event
+import json
 
 def process_transfer_out(transaction_data):
     """Processes an outgoing transfer from a customer account."""
     account_id = transaction_data.get('from_account')
     amount_str = transaction_data.get('amount', '0')
-    amount = Decimal(amount_str).quantize(config.CHF_QUANTIZE, ROUND_HALF_UP)
+    amount = Decimal(amount_str).quantize(CHF_QUANTIZE, ROUND_HALF_UP)
     timestamp = transaction_data.get('timestamp', datetime.now().isoformat())
     transaction_id = generate_id("TR")
 
@@ -80,7 +81,7 @@ def process_incoming_payment(transaction_data):
     """Processes an incoming payment to a customer account."""
     account_id = transaction_data.get('to_account')
     amount_str = transaction_data.get('amount', '0')
-    amount = Decimal(amount_str).quantize(config.CHF_QUANTIZE, ROUND_HALF_UP)
+    amount = Decimal(amount_str).quantize(CHF_QUANTIZE, ROUND_HALF_UP)
     timestamp = transaction_data.get('timestamp', datetime.now().isoformat())
     transaction_id = generate_id("TR")
 
@@ -137,42 +138,100 @@ def process_incoming_payment(transaction_data):
     add_transaction_to_account(account_data, tx_record)
     return tx_record
 
+def process_account_closure(transaction_data):
+    """Processes an account closure request."""
+    account_id = transaction_data.get('account_id')
+    timestamp = transaction_data.get('timestamp', datetime.now().isoformat())
+    transaction_id = generate_id("CLS")
+
+    # Create base transaction record
+    tx_record = {
+        "transaction_id": transaction_id,
+        "type": "account_closure_request",
+        "account": account_id,
+        "timestamp": timestamp,
+        "status": "rejected",
+        "reason": ""
+    }
+
+    # Get account data
+    account_data = get_account(account_id)
+    if not account_data:
+        print(f"Account Closure Failed: Account {account_id} not found.")
+        tx_record["reason"] = "Account not found"
+        return tx_record
+
+    # Check if account is already closed
+    if account_data['status'] == 'closed':
+        print(f"Account {account_id} is already closed.")
+        tx_record["status"] = "completed"
+        tx_record["reason"] = "Account already closed"
+        add_transaction_to_account(account_data, tx_record)
+        return tx_record
+
+    # Check if account has zero balance
+    if account_data['balance'] != Decimal('0.00'):
+        print(f"Account Closure Failed: Account {account_id} has non-zero balance: {account_data['balance']}")
+        tx_record["reason"] = f"Non-zero balance: {account_data['balance']}"
+        add_transaction_to_account(account_data, tx_record)
+        return tx_record
+
+    # Check for active credit account
+    credit_account_id = f"CR{account_id}"
+    credit_account = get_account(credit_account_id)
+    if credit_account and credit_account['status'] in ['active', 'blocked']:
+        print(f"Account Closure Failed: Account {account_id} has active credit account.")
+        tx_record["reason"] = "Active credit account exists"
+        add_transaction_to_account(account_data, tx_record)
+        return tx_record
+
+    # Attempt to close the account
+    if close_account(account_id):
+        tx_record["status"] = "completed"
+        print(f"Account {account_id} closed successfully.")
+    else:
+        tx_record["reason"] = "Account closure failed"
+        print(f"Account Closure Failed: Could not close account {account_id}")
+
+    add_transaction_to_account(account_data, tx_record)
+    return tx_record
+
 def process_transaction_file(file_path):
-    """Loads transactions from a JSON file and processes them sequentially."""
-    print(f"\n--- Processing Transaction File: {file_path} ---")
-    transactions = load_json(file_path)
+    """Processes a transaction file."""
+    print(f"\nProcessing transaction file: {file_path}")
+    try:
+        with open(file_path, 'r') as f:
+            print(f"Successfully opened file: {file_path}")
+            transactions = json.load(f)
+            print(f"Loaded {len(transactions)} transactions from file")
+            for tx in transactions:
+                print(f"\nProcessing transaction: {tx}")
+                process_transaction(tx)
+    except FileNotFoundError:
+        print(f"Error: File not found: {file_path}")
+    except json.JSONDecodeError as e:
+        print(f"Error: Invalid JSON in file {file_path}: {e}")
+    except Exception as e:
+        print(f"Unexpected error processing file {file_path}: {e}")
 
-    if transactions is None:
-        print(f"Error: Could not load or decode transaction file {file_path}")
-        return
-    if not isinstance(transactions, list):
-        print(f"Error: Transaction file {file_path} does not contain a list of transactions.")
-        return
-
-    # Assume transactions in the file are already ordered by timestamp correctly.
-    for i, tx_data in enumerate(transactions):
-        tx_type = tx_data.get('type')
-        print(f"\nProcessing Transaction {i + 1}/{len(transactions)}: Type = {tx_type}")
-
-        try:
-            if tx_type == "time_event":
-                process_time_event(tx_data)
-            elif tx_type == "create_customer":
-                create_customer(tx_data.get('name'), tx_data.get('address'), tx_data.get('birth_date'))
-            elif tx_type == "create_account":
-                create_account(tx_data.get('customer_id'))
-            elif tx_type == "transfer_out":
-                process_transfer_out(tx_data)
-            elif tx_type == "transfer_in":
-                process_incoming_payment(tx_data)
-            elif tx_type == "credit_request":
-                request_credit(tx_data)
-            else:
-                print(f"Warning: Unknown transaction type '{tx_type}'. Skipping.")
-
-        except Exception as e:
-            print(f"!!! Critical Error processing transaction {i + 1} ({tx_type}): {e} !!!")
-            import traceback
-            traceback.print_exc()
-
-    print(f"--- Finished Processing Transaction File: {file_path} ---")
+def process_transaction(tx_data):
+    """Processes a single transaction based on its type."""
+    tx_type = tx_data.get('type')
+    if tx_type == "time_event":
+        process_time_event(tx_data)
+    elif tx_type == "create_customer":
+        create_customer(tx_data.get('name'), tx_data.get('address'), tx_data.get('birth_date'))
+    elif tx_type == "create_account":
+        create_account(tx_data.get('customer_id'))
+    elif tx_type == "transfer_out":
+        process_transfer_out(tx_data)
+    elif tx_type == "transfer_in":
+        process_incoming_payment(tx_data)
+    elif tx_type == "credit_request":
+        request_credit(tx_data)
+    elif tx_type == "manual_credit_repayment":
+        process_manual_credit_repayment(tx_data)
+    elif tx_type == "account_closure":
+        process_account_closure(tx_data)
+    else:
+        print(f"Warning: Unknown transaction type '{tx_type}'. Skipping.")

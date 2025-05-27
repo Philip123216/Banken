@@ -2,11 +2,11 @@
 from datetime import datetime
 from decimal import Decimal
 import os
-from dateutil.relativedelta import relativedelta # Externes Paket, bleibt so
-from . import config # RELATIV
-from .utils import generate_id, save_json, load_json, parse_datetime # RELATIV
-from .customer_service import get_customer # RELATIV
-from .ledger_service import update_bank_ledger # RELATIV
+from dateutil.relativedelta import relativedelta
+from . import config
+from .utils import generate_id, save_json, load_json, parse_datetime
+from .customer_service import get_customer
+from .ledger_service import update_bank_ledger
 
 
 def create_account(customer_id):
@@ -144,6 +144,8 @@ def process_quarterly_fees(current_date):
         if months_diff >= 3:
             # Charge quarterly fee
             balance_before = account_data['balance']
+            if isinstance(balance_before, str):
+                balance_before = Decimal(balance_before)
 
             # Create fee transaction record
             fee_tx = {
@@ -158,7 +160,7 @@ def process_quarterly_fees(current_date):
 
             if balance_before >= config.QUARTERLY_FEE:
                 # Sufficient funds - charge fee
-                account_data['balance'] -= config.QUARTERLY_FEE
+                account_data['balance'] = balance_before - config.QUARTERLY_FEE
                 fee_tx["status"] = "completed"
                 fee_tx["balance_after"] = account_data['balance']
 
@@ -184,3 +186,68 @@ def process_quarterly_fees(current_date):
             add_transaction_to_account(account_data, fee_tx)  # This saves the account
 
     print(f"--- Quarterly Fee Processing Complete. Charged: {fees_charged}, Failed: {fees_failed} ---")
+
+def close_account(account_id):
+    """Closes a customer's account if it has zero balance and no active credit."""
+    account_data = get_account(account_id)
+    if not account_data:
+        print(f"Error: Account {account_id} not found.")
+        return False
+
+    # Check if account is already closed
+    if account_data['status'] == 'closed':
+        print(f"Account {account_id} is already closed.")
+        return True
+
+    # Check if account has zero balance
+    if account_data['balance'] != Decimal('0.00'):
+        print(f"Error: Cannot close account {account_id} with non-zero balance: {account_data['balance']}")
+        return False
+
+    # Check if there's an active credit account
+    credit_account_id = f"CR{account_id}"
+    credit_account = get_account(credit_account_id)
+    if credit_account and credit_account['status'] in ['active', 'blocked']:
+        print(f"Error: Cannot close account {account_id} with active credit account.")
+        return False
+
+    # Create closing transaction
+    close_tx = {
+        "transaction_id": generate_id("CLS"),
+        "type": "account_closure",
+        "account": account_id,
+        "timestamp": datetime.now().isoformat(),
+        "status": "completed",
+        "balance_before": account_data['balance'],
+        "balance_after": account_data['balance']
+    }
+
+    # Update account status
+    account_data['status'] = 'closed'
+    account_data['closed_at'] = datetime.now().isoformat()
+
+    # If there's a credit account, close it too if it's not already closed
+    if credit_account and credit_account['status'] not in ['closed', 'written_off']:
+        credit_account['status'] = 'closed'
+        credit_account['closed_at'] = datetime.now().isoformat()
+        
+        # Create credit account closure transaction
+        credit_close_tx = {
+            "transaction_id": generate_id("CLS"),
+            "type": "credit_account_closure",
+            "account": credit_account_id,
+            "timestamp": datetime.now().isoformat(),
+            "status": "completed",
+            "balance_before": credit_account['balance'],
+            "balance_after": credit_account['balance']
+        }
+        
+        # Add credit closure transaction
+        add_transaction_to_account(credit_account, credit_close_tx)
+        save_account(credit_account)
+        print(f"Associated credit account {credit_account_id} closed.")
+
+    # Add transaction and save
+    add_transaction_to_account(account_data, close_tx)
+    print(f"Account {account_id} closed successfully.")
+    return True

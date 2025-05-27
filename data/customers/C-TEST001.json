@@ -1,8 +1,0 @@
-{
-  "customer_id": "C-TEST001",
-  "name": "Alice Test",
-  "address": "1 Testweg",
-  "birth_date": "1990-01-01",
-  "created_at": "2025-01-01T00:00:00",
-  "status": "active"
-}

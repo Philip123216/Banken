@@ -1,0 +1,87 @@
+[
+  {
+    "type": "create_customer",
+    "name": "Test Customer Closure",
+    "address": "Test Street 123",
+    "birth_date": "1990-01-01",
+    "timestamp": "2025-01-01T10:00:00"
+  },
+  {
+    "type": "create_account",
+    "customer_id": "C-TESTCLOSURE",
+    "timestamp": "2025-01-01T10:01:00"
+  },
+  {
+    "type": "transfer_in",
+    "to_account": "CH-TESTCLOSURE",
+    "from_iban": "CH-EXTERNAL",
+    "amount": "5000.00",
+    "timestamp": "2025-01-01T10:02:00"
+  },
+  {
+    "type": "credit_request",
+    "main_account": "CH-TESTCLOSURE",
+    "amount": "10000.00",
+    "timestamp": "2025-01-01T10:03:00"
+  },
+  {
+    "type": "transfer_out",
+    "from_account": "CH-TESTCLOSURE",
+    "to_iban": "CH-EXTERNAL",
+    "amount": "5000.00",
+    "timestamp": "2025-01-01T10:04:00"
+  },
+  {
+    "type": "time_event",
+    "date": "2025-02-01T00:00:00"
+  },
+  {
+    "type": "time_event",
+    "date": "2025-03-01T00:00:00"
+  },
+  {
+    "type": "time_event",
+    "date": "2025-04-01T00:00:00"
+  },
+  {
+    "type": "time_event",
+    "date": "2025-05-01T00:00:00"
+  },
+  {
+    "type": "time_event",
+    "date": "2025-06-01T00:00:00"
+  },
+  {
+    "type": "time_event",
+    "date": "2025-07-01T00:00:00"
+  },
+  {
+    "type": "time_event",
+    "date": "2025-08-01T00:00:00"
+  },
+  {
+    "type": "time_event",
+    "date": "2025-09-01T00:00:00"
+  },
+  {
+    "type": "time_event",
+    "date": "2025-10-01T00:00:00"
+  },
+  {
+    "type": "time_event",
+    "date": "2025-11-01T00:00:00"
+  },
+  {
+    "type": "time_event",
+    "date": "2025-12-01T00:00:00"
+  },
+  {
+    "type": "time_event",
+    "date": "2026-01-01T00:00:00"
+  },
+  {
+    "type": "account_closure",
+    "account_id": "CH-TESTCLOSURE",
+    "timestamp": "2026-01-01T10:00:00"
+  }
+] 
