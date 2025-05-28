@@ -29,7 +29,13 @@ Dies ist ein modulares Banksystem, das im Rahmen des Kurses CDS305 entwickelt wu
    pip install -r requirements.txt
    ```
 
-4. **Run Tests**
+4. **Initialize Data Directory Structure**
+   ```bash
+   # Run the setup script to create necessary directories and files
+   python setup.py
+   ```
+
+5. **Run Tests**
    ```bash
    # Run the scripted test
    python -m test_data.scripted_test
@@ -60,7 +66,13 @@ Dies ist ein modulares Banksystem, das im Rahmen des Kurses CDS305 entwickelt wu
    pip install -r requirements.txt
    ```
 
-4. **Tests ausführen**
+4. **Datenverzeichnisstruktur initialisieren**
+   ```bash
+   # Setup-Skript ausführen, um notwendige Verzeichnisse und Dateien zu erstellen
+   python setup.py
+   ```
+
+5. **Tests ausführen**
    ```bash
    # Scripted Test ausführen
    python -m test_data.scripted_test
