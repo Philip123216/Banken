@@ -1,146 +1,70 @@
-# Smart-Phone Haifisch Bank - Modulares System
+# Smart-Phone Haifisch Bank Simulation
 
-Dies ist ein modulares Banksystem, das im Rahmen des Kurses CDS305 entwickelt wurde. Es simuliert grundlegende Bankfunktionalitäten wie Kunden- und Kontoverwaltung, Transaktionsverarbeitung, Kreditmanagement und Ledger-Buchhaltung.
-
-## Setup Guide / Einrichtungsanleitung
-
-### English
-
-1. **Clone the Repository**
-   ```bash
-   git clone https://github.com/Philip123216/Banken.git
-   cd Banken
-   ```
-
-2. **Set up Python Virtual Environment**
-   ```bash
-   # Create virtual environment
-   python -m venv venv
-
-   # Activate virtual environment
-   # On Windows:
-   venv\Scripts\activate
-   # On Linux/Mac:
-   source venv/bin/activate
-   ```
-
-3. **Install Dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Initialize Data Directory Structure**
-   ```bash
-   # Run the setup script to create necessary directories and files
-   python setup.py
-   ```
-
-5. **Run Tests**
-   ```bash
-   # Run the scripted test
-   python -m test_data.scripted_test
-   ```
-
-### Deutsch
-
-1. **Repository klonen**
-   ```bash
-   git clone https://github.com/Philip123216/Banken.git
-   cd Banken
-   ```
-
-2. **Python Virtual Environment einrichten**
-   ```bash
-   # Virtual Environment erstellen
-   python -m venv venv
-
-   # Virtual Environment aktivieren
-   # Unter Windows:
-   venv\Scripts\activate
-   # Unter Linux/Mac:
-   source venv/bin/activate
-   ```
-
-3. **Abhängigkeiten installieren**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Datenverzeichnisstruktur initialisieren**
-   ```bash
-   # Setup-Skript ausführen, um notwendige Verzeichnisse und Dateien zu erstellen
-   python setup.py
-   ```
-
-5. **Tests ausführen**
-   ```bash
-   # Scripted Test ausführen
-   python -m test_data.scripted_test
-   ```
+Dieses Projekt simuliert die Kernfunktionen einer einfachen Smartphone-Bank, einschliesslich Kunden-, Konto-, Transaktions- und Kreditmanagement. Es verwendet eine dateibasierte Speicherung im JSON-Format und beinhaltet eine Zeitsimulation zur Verarbeitung periodischer Ereignisse.
 
 ## Projektstruktur
 
-Das Projekt ist wie folgt strukturiert:
-- `data/`: Enthält JSON-Dateien für Kundendaten, Konten, Ledger und Systemdatum.
-- `src/`: Enthält den Python-Quellcode, unterteilt in Service-Module.
-    - `config.py`: Globale Konfigurationen.
-    - `utils.py`: Allgemeine Hilfsfunktionen.
-    - `*_service.py`: Spezifische Funktionalitätsmodule.
-    - `main.py`: Haupteinstiegspunkt für die Simulation.
-- `example_transactions_*.json`: Beispieldateien zur Demonstration der Transaktionsverarbeitung.
-- `test_data/`: Enthält Testskripte und Test-Transaktionsdateien.
+- **`src/`**: Enthält den gesamten Quellcode der Simulation.
+  - **`__init__.py`**: Markiert das `src` Verzeichnis als Python-Paket.
+  - **`account_service.py`**: Funktionen zur Kontoerstellung, -schliessung und -verwaltung (z.B. Quartalsgebühren).
+  - **`config.py`**: Konfigurationsvariablen (Dateipfade, Gebühren, Zinssätze etc.).
+  - **`credit_service.py`**: Funktionen zur Kreditvergabe, -tilgung, Strafzinsberechnung und Abschreibung.
+  - **`customer_service.py`**: Funktionen zur Kundenverwaltung.
+  - **`generate_test_data.py`**: Skript zur Generierung umfangreicher Testdaten über einen längeren Zeitraum (z.B. 50 Kunden, 2 Jahre) zur Simulation des Gesamtsystems.
+  - **`ledger_service.py`**: Verwaltung des Hauptbuchs der Bank.
+  - **`main.py`**: (Optional) Ein Haupteinstiegspunkt, falls eine komplette Simulation über `generate_test_data.py` hinaus gestartet werden soll, die Transaktionsdateien verarbeitet.
+  - **`test_script.py`**: Ein Skript für Unit- und Integrationstests spezifischer Szenarien durch direkte Funktionsaufrufe. Es testet Kernfunktionen wie Kontoerstellung, Überweisungen, Kreditaufnahme, monatliche Zahlungen, verpasste Zahlungen, Strafzinsen und Kreditabschreibung.
+  - **`time_processing_service.py`**: Steuert die Simulation der Zeit und löst periodische Aufgaben aus.
+  - **`transaction_service.py`**: Verarbeitet einzelne Transaktionen aus Dateien oder direkten Aufrufen.
+  - **`utils.py`**: Hilfsfunktionen (ID-Generierung, JSON-Handling, Datums-Parsing).
+- **`data/`**: Verzeichnis für die Datenspeicherung (wird von den Skripten erstellt).
+  - **`accounts/`**: Enthält JSON-Dateien für jedes Konto.
+  - **`customers/`**: Enthält JSON-Dateien für jeden Kunden.
+  - **`transactions/`**: Enthält JSON-Dateien für jede Transaktion (generiert von `generate_test_data.py`).
+  - **`bank_ledger.json`**: Das Hauptbuch der Bank.
+  - **`system_date.json`**: Speichert das aktuelle Systemdatum der Simulation.
+- **`.gitignore`**: Spezifiziert Dateien, die von Git ignoriert werden sollen.
+- **`IMPLEMENTATION_MAPPING.md`**: Ordnet die Anforderungen den Implementierungsdetails zu.
+- **`README.md`**: Diese Datei.
+- **`Smartphone Bank Aufgabe.md`**: Aufgabenbeschreibung.
+- **`Technische Beschreibung.md`**: Technische Spezifikationen.
 
-## Anforderungen (Requirements)
+## Setup
 
-- Python 3.10 oder neuer
-- Alle Python-Abhängigkeiten sind in `requirements.txt` gelistet (inkl. `python-dateutil`)
+Es wird empfohlen, eine virtuelle Umgebung zu verwenden:
 
-## Nutzung (Usage)
-
-### 1. Simulation mit Transaktionsdateien
-
-Führen Sie die Hauptsimulation mit einer oder mehreren Transaktionsdateien aus:
 ```bash
-python -m src.main test_data/test_transactions.json
+python -m venv venv
+# Windows
+.\venv\Scripts\activate
+# macOS/Linux
+source venv/bin/activate
 ```
 
-### 2. Scripted Test (empfohlen für vollständigen Systemtest)
+Installieren Sie die benötigten Abhängigkeiten:
 
-Das Skript `test_data/scripted_test.py` führt einen vollständigen Testlauf durch:
-- Erstellt Kunden und Konten
-- Führt Ein- und Auszahlungen durch
-- Beantragt und tilgt einen Kredit
-- Führt eine Zeit-Event-Verarbeitung (z.B. Quartalsgebühr) durch
-- Schließt ein Konto nach vollständiger Auszahlung
-
-Ausführen mit:
 ```bash
-python -m test_data.scripted_test
+pip install python-dateutil
 ```
 
-Das Skript gibt die Ergebnisse jedes Schritts aus und prüft, ob alle Kernfunktionen korrekt arbeiten.
+## Ausführung
 
-## Hinweise
-- Die IDs für Kunden und Konten werden dynamisch generiert.
-- Für eigene Tests können Sie das Skript anpassen oder eigene Transaktionsdateien erstellen.
+1.  **Generierung von Testdaten für eine umfassende Simulation:**
+    Führt eine Simulation mit vielen Kunden und Transaktionen über einen längeren Zeitraum durch und generiert entsprechende Transaktionsdateien.
 
-## Wichtige Dateien für Sinan
-- `IMPLEMENTATION_MAPPING.md`: Zeigt die Implementierung aller Anforderungen
-- `Smartphone Bank Aufgabe.md`: Enthält die ursprünglichen Anforderungen
-- `Technische Beschreibung.md`: Enthält die technische Dokumentation
-- `test_data/scripted_test.py`: Beispiel für die Verwendung des Systems
-- `test_data/test_transactions.json`: Beispiel-Transaktionsdatei
+    ```bash
+    python -m src.generate_test_data
+    ```
+    Dies bereinigt auch vorherige Daten in den `data` Unterverzeichnissen.
 
-## Fehlerbehebung / Troubleshooting
+2.  **Ausführung des Skript-basierten Tests:**
+    Dieses Skript führt eine Reihe vordefinierter Tests für spezifische funktionale Szenarien durch, einschliesslich der kritischen Pfade der Kreditverarbeitung.
 
-1. **ImportError: No module named 'src'**
-   - Stellen Sie sicher, dass Sie sich im Hauptverzeichnis des Projekts befinden
-   - Führen Sie Python-Befehle mit `-m` aus (z.B. `python -m src.main`)
+    ```bash
+    python -m src.test_script
+    ```
+    Dieses Skript führt zu Beginn ebenfalls ein `cleanup_test_data()` durch.
 
-2. **ModuleNotFoundError**
-   - Überprüfen Sie, ob die Virtual Environment aktiviert ist
-   - Führen Sie `pip install -r requirements.txt` erneut aus
+## Implementierungsdetails
 
-3. **JSON Decode Error**
-   - Stellen Sie sicher, dass die JSON-Dateien korrekt formatiert sind
-   - Überprüfen Sie die Dateiberechtigungen im `data/` Verzeichnis
+Weitere Details zur Zuordnung der Anforderungen zu den Code-Modulen finden Sie in `IMPLEMENTATION_MAPPING.md`.

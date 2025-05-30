@@ -1,4 +1,7 @@
 # src/ledger_service.py
+# Hauptbuchverwaltungsmodul für das Smart-Phone Haifisch Bank System
+# Implementiert die doppelte Buchführung und Systemvalidierung
+
 from decimal import Decimal
 import os
 import json
@@ -7,7 +10,19 @@ from . import config
 from .utils import load_json, save_json
 
 def load_bank_ledger():
-    """Loads the bank's ledger. Initializes if it doesn't exist."""
+    """
+    Lädt das Hauptbuch der Bank. Initialisiert es, falls es nicht existiert.
+    
+    Returns:
+        dict: Hauptbuch mit Konten:
+            - customer_liabilities: Kundenguthaben
+            - central_bank_assets: Zentralbankguthaben
+            - credit_assets: Kreditforderungen
+            - income: Bankeinnahmen
+            
+    Hinweis:
+        Stellt sicher, dass alle Salden als Decimal gespeichert sind
+    """
     ledger = load_json(config.LEDGER_FILE)
     if ledger is None:
         print("Initializing new bank ledger.")
@@ -15,7 +30,8 @@ def load_bank_ledger():
             "customer_liabilities": {"balance": Decimal("0.00")},
             "central_bank_assets": {"balance": Decimal("0.00")},
             "credit_assets": {"balance": Decimal("0.00")},
-            "income": {"balance": Decimal("0.00")}
+            "income": {"balance": Decimal("0.00")},
+            "credit_losses": {"balance": Decimal("0.00")}
         }
         save_json(config.LEDGER_FILE, ledger)
     # Ensure balances are Decimal
@@ -29,9 +45,23 @@ def load_bank_ledger():
 
 def update_bank_ledger(updates):
     """
-    Updates the bank ledger based on double-entry principles.
-    'updates' is a list of tuples: [('account_name', amount_change), ...]
-    Example: [('customer_liabilities', +100), ('central_bank_assets', +100)]
+    Aktualisiert das Hauptbuch nach dem Prinzip der doppelten Buchführung.
+    
+    Args:
+        updates (list): Liste von Tupeln (Konto, Betrag):
+            - Konto: Name des Kontos
+            - Betrag: Änderung als Decimal (positiv oder negativ)
+            
+    Beispiel:
+        [('customer_liabilities', +100), ('central_bank_assets', +100)]
+        
+    Returns:
+        dict: Aktualisiertes Hauptbuch
+        
+    Hinweis:
+        - Prüft ob Konten existieren
+        - Stellt sicher dass Beträge Decimal sind
+        - Summiert alle Änderungen
     """
     ledger = load_bank_ledger()
     total_change = Decimal('0.00')
@@ -50,11 +80,32 @@ def update_bank_ledger(updates):
     return ledger
 
 def get_bank_ledger():
-    """Returns the current state of the bank ledger."""
+    """
+    Gibt den aktuellen Stand des Hauptbuchs zurück.
+    
+    Returns:
+        dict: Aktuelles Hauptbuch mit allen Konten und Salden
+    """
     return load_bank_ledger()
 
 def validate_bank_system():
-    """Performs basic validation checks on the system's financial state."""
+    """
+    Führt grundlegende Validierungsprüfungen des Finanzsystems durch.
+    
+    Prüft:
+        - Übereinstimmung der Kundensalden
+        - Übereinstimmung der Kreditsalden
+        - Bilanzgleichung (Aktiva = Passiva + Ertrag)
+        - Anzahl aktiver Konten und Kredite
+        
+    Returns:
+        bool: True wenn alle Prüfungen erfolgreich
+        
+    Hinweis:
+        - Vergleicht Hauptbuch mit tatsächlichen Kontosalden
+        - Berücksichtigt nur aktive und gesperrte Konten
+        - Toleriert Rundungsdifferenzen bis CHF_QUANTIZE
+    """
     print("\n--- Starting System Validation ---")
     ledger = load_bank_ledger()
     total_customer_balance = Decimal("0.00")

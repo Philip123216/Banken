@@ -1,51 +1,35 @@
 # Python
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
+*.pyc
+*.pyo
+*.pyd
 *.egg-info/
-.installed.cfg
-*.egg
+dist/
+build/
 
-# Virtual Environment
+# Virtual environment
 venv/
-ENV/
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# Project specific
-data/customers/
-data/accounts/
-data/bank_ledger/
-data/system_date.json
-
-# Virtualenv
 .venv/
-.venv_virtuell/
-venv/
-ENV/
 env/
-env.bak/
-venv.bak/
 
-# IDE / Editor specific
+# IDE specific
+.vscode/
+.idea/
+
+# Test data (dynamically generated)
+/data/accounts/*
+/data/customers/*
+/data/transactions/*
+# Keep bank_ledger.json and system_date.json if they exist at root of data/
+# To keep them, we need to make the ignore more specific or add unignore rules.
+# For now, this ignores all contents of the subdirectories.
+
+# Coverage reports
+.coverage
+.coverage.*
+htmlcov/
+
+# Other
 .DS_Store
 
 # Log files

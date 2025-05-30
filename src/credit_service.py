@@ -1,30 +1,47 @@
 # src/credit_service.py
+# Kreditverwaltungsmodul für das Smart-Phone Haifisch Bank System
+# Enthält Funktionen zur Kreditvergabe, Tilgung, Strafzinsberechnung und Abschreibung
+
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
-from dateutil.relativedelta import relativedelta # Externes Paket
+from dateutil.relativedelta import relativedelta  # Externes Paket für Datumsberechnungen
 import os
 import json
 from . import config
 from .utils import generate_id, save_json, load_json, parse_datetime
 from .ledger_service import update_bank_ledger
-from .time_processing_service import get_system_date
 
 def calculate_amortization(principal, annual_rate, term_months):
-    """Calculates amortization schedule for a loan."""
+    """
+    Berechnet den Tilgungsplan für einen Kredit.
+    
+    Args:
+        principal (Decimal): Kreditsumme
+        annual_rate (Decimal): Jährlicher Zinssatz
+        term_months (int): Kreditlaufzeit in Monaten
+        
+    Returns:
+        tuple: (monthly_payment, schedule)
+            - monthly_payment: Monatliche Rate
+            - schedule: Liste der Tilgungsplan-Einträge
+            
+    Hinweis:
+        Verwendet die Formel: P = (r*PV) / (1 - (1+r)^-n)
+        wobei P = Zahlung, r = monatlicher Zinssatz, PV = Kreditsumme, n = Anzahl Zahlungen
+    """
     monthly_rate = annual_rate / 12
 
-    # Calculate monthly payment using the formula: P = (r*PV) / (1 - (1+r)^-n)
-    # Where P = payment, r = monthly rate, PV = present value (principal), n = number of payments
+    # Monatliche Rate berechnen
     if monthly_rate == 0:
-        # Special case: no interest
+        # Spezialfall: Keine Zinsen
         monthly_payment = principal / term_months
     else:
         monthly_payment = (monthly_rate * principal) / (1 - (1 + monthly_rate) ** -term_months)
 
-    # Round to 2 decimal places
+    # Auf 2 Dezimalstellen runden
     monthly_payment = monthly_payment.quantize(config.CHF_QUANTIZE, ROUND_HALF_UP)
 
-    # Generate amortization schedule
+    # Tilgungsplan generieren
     schedule = []
     remaining_principal = principal
 
@@ -32,21 +49,21 @@ def calculate_amortization(principal, annual_rate, term_months):
         if remaining_principal <= 0:
             break
 
-        # Calculate interest for this period
+        # Zinsen für diesen Zeitraum berechnen
         interest_payment = (remaining_principal * monthly_rate).quantize(config.CHF_QUANTIZE, ROUND_HALF_UP)
 
-        # Calculate principal for this period (payment - interest)
+        # Tilgung für diesen Zeitraum berechnen (Rate - Zinsen)
         principal_payment = (monthly_payment - interest_payment).quantize(config.CHF_QUANTIZE, ROUND_HALF_UP)
 
-        # Adjust for final payment to avoid rounding issues
+        # Letzte Rate anpassen um Rundungsprobleme zu vermeiden
         if month == term_months or principal_payment > remaining_principal:
             principal_payment = remaining_principal
             monthly_payment = principal_payment + interest_payment
 
-        # Update remaining principal
+        # Restkreditsumme aktualisieren
         remaining_principal = (remaining_principal - principal_payment).quantize(config.CHF_QUANTIZE, ROUND_HALF_UP)
 
-        # Add to schedule
+        # Zum Plan hinzufügen
         schedule.append({
             "month": month,
             "payment": monthly_payment,
@@ -58,24 +75,42 @@ def calculate_amortization(principal, annual_rate, term_months):
     return monthly_payment, schedule
 
 def request_credit(transaction_data):
-    """Processes a credit request, disburses funds, and charges the fee."""
-    # Import here to avoid circular imports
+    """
+    Verarbeitet einen Kreditantrag, zahlt den Kredit aus und erhebt die Gebühr.
+    
+    Args:
+        transaction_data (dict): Transaktionsdaten mit:
+            - main_account: ID des Hauptkontos
+            - amount: Kreditsumme
+            - timestamp: Zeitstempel
+            
+    Returns:
+        dict/None: Transaktionsdatensatz oder None bei Fehler
+        
+    Hinweis:
+        - Prüft Kreditlimits und Kontostatus
+        - Erstellt Tilgungsplan
+        - Aktualisiert Ledger
+        - Erhebt Kreditgebühr
+    """
+    # Import hier um zirkuläre Imports zu vermeiden
     from .account_service import get_account, add_transaction_to_account, save_account
+    from .time_processing_service import get_system_date
     
     main_account_id = transaction_data.get('main_account')
     credit_account_id = f"CR{main_account_id}"
     amount_str = transaction_data.get('amount', '0')
     requested_amount = Decimal(amount_str).quantize(config.CHF_QUANTIZE, ROUND_HALF_UP)
     timestamp = transaction_data.get('timestamp', datetime.now().isoformat())
-    system_date = parse_datetime(timestamp) or get_system_date()
+    system_date_for_credit_start = parse_datetime(timestamp) if timestamp else get_system_date()
 
     main_account = get_account(main_account_id)
     credit_account = get_account(credit_account_id)
 
-    # --- Validations ---
+    # --- Validierungen ---
     if not main_account or not credit_account:
         print(f"Credit Request Failed: Account(s) not found for {main_account_id}.")
-        return None  # Or return a rejected transaction status
+        return None  # Oder einen abgelehnten Transaktionsstatus zurückgeben
 
     if main_account['status'] != 'active':
         print(f"Credit Request Failed: Main account {main_account_id} is not active.")
@@ -89,13 +124,13 @@ def request_credit(transaction_data):
         print(f"Credit Request Failed: Amount {requested_amount} is outside limits ({config.MIN_CREDIT}-{config.MAX_CREDIT}).")
         return None
 
-    # --- Process Disbursement ---
+    # --- Auszahlung verarbeiten ---
     disbursement_tx_id = generate_id("CRD")  # Credit Disbursement
     balance_before_disburse = main_account['balance']
     main_account['balance'] += requested_amount
     balance_after_disburse = main_account['balance']
 
-    # Create disbursement transaction record (add later)
+    # Auszahlungstransaktion erstellen (später hinzufügen)
     disburse_tx = {
         "transaction_id": disbursement_tx_id,
         "type": "credit_disbursement",
@@ -108,43 +143,43 @@ def request_credit(transaction_data):
         "main_balance_after": balance_after_disburse
     }
 
-    # --- Update Credit Account ---
+    # --- Kreditkonto aktualisieren ---
     credit_balance_before = credit_account['balance']
-    credit_account['balance'] = requested_amount  # Loan principal owed
+    credit_account['balance'] = requested_amount  # Ausstehender Kreditbetrag
     credit_account['original_amount'] = requested_amount
     credit_account['status'] = 'active'
-    credit_account['credit_start_date'] = system_date.isoformat()
-    credit_account['credit_end_date'] = (system_date + relativedelta(months=config.CREDIT_TERM_MONTHS)).isoformat()
+    credit_account['credit_start_date'] = system_date_for_credit_start.isoformat()
+    credit_account['credit_end_date'] = (system_date_for_credit_start + relativedelta(months=config.CREDIT_TERM_MONTHS)).isoformat()
     credit_account['remaining_payments'] = config.CREDIT_TERM_MONTHS
     credit_account['missed_payments_count'] = 0
-    credit_account['penalty_accrued'] = Decimal('0.00')  # Reset penalty on new loan
+    credit_account['penalty_accrued'] = Decimal('0.00')  # Strafen bei neuem Kredit zurücksetzen
 
-    # Calculate Amortization
+    # Tilgungsplan berechnen
     monthly_payment, schedule = calculate_amortization(requested_amount, config.CREDIT_INTEREST_RATE_PA, config.CREDIT_TERM_MONTHS)
     credit_account['monthly_payment'] = monthly_payment
-    credit_account['amortization_schedule'] = schedule  # Store the schedule
+    credit_account['amortization_schedule'] = schedule  # Plan speichern
 
     print(f"Credit Approved: {requested_amount} for {main_account_id}. Monthly Payment: {monthly_payment}")
 
-    # --- Ledger Update for Disbursement ---
+    # --- Ledger für Auszahlung aktualisieren ---
     update_bank_ledger([
-        ('credit_assets', +requested_amount),  # Bank's asset increases
-        ('customer_liabilities', +requested_amount)  # Bank owes customer more (in their account)
+        ('credit_assets', +requested_amount),  # Bankvermögen erhöht sich
+        ('customer_liabilities', +requested_amount)  # Bank schuldet dem Kunden mehr (auf seinem Konto)
     ])
 
-    # --- Process Credit Fee ---
+    # --- Kreditgebühr verarbeiten ---
     fee_tx_id = generate_id("FEE")
-    balance_before_fee = main_account['balance']  # Use balance *after* disbursement
+    balance_before_fee = main_account['balance']  # Kontostand nach Auszahlung verwenden
 
-    # Create fee transaction record (add later)
+    # Gebührentransaktion erstellen (später hinzufügen)
     fee_tx = {
         "transaction_id": fee_tx_id,
         "type": "credit_fee",
         "from_account": main_account_id,
-        "credit_account": credit_account_id,  # Link fee to the credit event
+        "credit_account": credit_account_id,  # Gebühr mit Kreditereignis verknüpfen
         "amount": config.CREDIT_FEE,
-        "timestamp": timestamp,  # Use same timestamp or slightly later? Same is fine.
-        "status": "rejected",  # Default
+        "timestamp": timestamp,  # Gleichen Zeitstempel verwenden
+        "status": "rejected",  # Standard
         "balance_before": balance_before_fee,
         "balance_after": balance_before_fee,
         "reason": ""
@@ -160,43 +195,53 @@ def request_credit(transaction_data):
         fee_tx["balance_after"] = main_account['balance']
         print(f"Credit Fee Charged: {config.CREDIT_FEE} from {main_account_id}. New balance: {main_account['balance']:.2f}")
 
-        # --- Ledger Update for Fee ---
+        # --- Ledger für Gebühr aktualisieren ---
         update_bank_ledger([
-            ('customer_liabilities', -config.CREDIT_FEE),  # Customer balance decreases
-            ('income', +config.CREDIT_FEE)  # Bank earns income
+            ('customer_liabilities', -config.CREDIT_FEE),  # Kundenkontostand verringert sich
+            ('income', +config.CREDIT_FEE)  # Bank erzielt Einnahmen
         ])
 
-    # --- Save All Changes ---
-    # Save main account
-    account_file_path = os.path.join(config.ACCOUNTS_DIR, f"{main_account_id}.json")
-    save_json(account_file_path, main_account)
+    # --- Alle Änderungen speichern ---
+    # Hauptkonto speichern
+    save_account(main_account)
 
-    # Save credit account
-    credit_account_file_path = os.path.join(config.ACCOUNTS_DIR, f"{credit_account_id}.json")
-    save_json(credit_account_file_path, credit_account)
+    # Kreditkonto speichern
+    save_account(credit_account)
 
-    # Add transactions to respective accounts
-    add_transaction_to_account(main_account, disburse_tx)  # Disbursement to main account
-    add_transaction_to_account(main_account, fee_tx)  # Fee to main account
-    add_transaction_to_account(credit_account, disburse_tx)  # Link disbursement to credit account too
+    # Transaktionen zu den jeweiligen Konten hinzufügen
+    add_transaction_to_account(main_account, disburse_tx)  # Auszahlung zum Hauptkonto
+    add_transaction_to_account(main_account, fee_tx)  # Gebühr zum Hauptkonto
+    add_transaction_to_account(credit_account, disburse_tx)  # Auszahlung auch zum Kreditkonto verknüpfen
+    add_transaction_to_account(credit_account, fee_tx)
 
     return disburse_tx
 
 def process_manual_credit_repayment(transaction_data):
-    """Processes a manual (partial or full) credit repayment initiated by customer."""
-    # Note: The requirements focus on automatic monthly amortization.
-    # This function handles ad-hoc repayments if needed ('kann jederzeit ... zurückgezahlt werden').
-    # It simplifies things: reduces principal directly, doesn't recalculate schedule here.
-    # Import here to avoid circular imports
+    """
+    Verarbeitet eine manuelle (teilweise oder vollständige) Kredittilgung durch den Kunden.
+    
+    Args:
+        transaction_data (dict): Transaktionsdaten mit:
+            - main_account: ID des Hauptkontos
+            - credit_account: ID des Kreditkontos
+            - amount: Tilgungsbetrag
+            - timestamp: Zeitstempel
+            
+    Hinweis:
+        - Fokussiert auf automatische monatliche Tilgung
+        - Ermöglicht zusätzliche manuelle Tilgungen
+        - Vereinfacht: Reduziert direkt den Kapitalbetrag
+        - Berechnet den Tilgungsplan nicht neu
+    """
+    # Import hier um zirkuläre Imports zu vermeiden
     from .account_service import get_account, add_transaction_to_account, save_account
     main_account_id = transaction_data.get('main_account')
-    credit_account_id = transaction_data.get('credit_account')  # Should be CR<main_account_id>
+    credit_account_id = transaction_data.get('credit_account')  # Sollte CR<main_account_id> sein
     amount_str = transaction_data.get('amount', '0')
     repayment_amount = Decimal(amount_str).quantize(config.CHF_QUANTIZE, ROUND_HALF_UP)
     timestamp = transaction_data.get('timestamp', datetime.now().isoformat())
     transaction_id = generate_id("MRP")  # Manual RePayment
 
-    # --- Load accounts ---
     main_account = get_account(main_account_id)
     credit_account = get_account(credit_account_id)
 
@@ -295,316 +340,346 @@ def process_manual_credit_repayment(transaction_data):
     return tx_record
 
 def process_monthly_credit_payments(current_date):
-    """Processes monthly credit payments and handles account blocking if payments fail."""
-    # Import here to avoid circular imports
+    """
+    Verarbeitet die monatlichen Kredittilgungen für alle aktiven Kredite.
+    Wird typischerweise am ersten Tag des Monats durch `process_time_event` aufgerufen.
+    Stellt sicher, dass Zins und Tilgung korrekt berechnet, Konten aktualisiert,
+    Transaktionen erstellt und Ledger-Einträge vorgenommen werden.
+    Handhabt auch nicht ausreichende Deckung und Kontosperrungen.
+    """
+    # Lokale Imports, um Abhängigkeiten klar zu halten und zirkuläre Imports zu vermeiden
     from .account_service import get_account, add_transaction_to_account, save_account
+    # generate_id, update_bank_ledger und config sind bereits auf Modulebene verfügbar
+
     print(f"\n--- Processing Monthly Credit Payments for {current_date.isoformat()} ---")
+    processed_successful_count = 0
+    payment_attempted_count = 0
 
-    all_files = os.listdir(config.ACCOUNTS_DIR)
-    credit_files = [f for f in all_files if f.startswith('CR') and f.endswith('.json')]
-
-    payments_processed = 0
-    payments_failed = 0
-    accounts_blocked = 0
-
-    for credit_file in credit_files:
-        credit_account = load_json(os.path.join(config.ACCOUNTS_DIR, credit_file))
-        
-        # Skip inactive or paid off credits
-        if not credit_account or credit_account['status'] not in ['active', 'blocked']:
+    for filename in os.listdir(config.ACCOUNTS_DIR):
+        if not filename.startswith('CRCH-') or not filename.endswith('.json'):
             continue
 
-        credit_account_id = credit_account['account_id']
-        main_account_id = credit_account_id[2:]  # Remove 'CR' prefix
+        credit_account_id = filename[:-5]
+        credit_account = get_account(credit_account_id)
+
+        if not credit_account or credit_account.get('status') not in ['active', 'blocked']:
+            continue
+
+        # Sicherstellen, dass remaining_payments als int behandelt wird
+        remaining_payments_val = credit_account.get('remaining_payments', 0)
+        try:
+            remaining_payments_int = int(remaining_payments_val)
+        except (ValueError, TypeError):
+            print(f"Warning: Could not convert remaining_payments '{remaining_payments_val}' to int for {credit_account_id}. Defaulting to 0.")
+            remaining_payments_int = 0
+
+        current_credit_balance = credit_account.get('balance', Decimal('0.01'))
+        if not isinstance(current_credit_balance, Decimal):
+             current_credit_balance = Decimal(str(current_credit_balance))
+
+        if remaining_payments_int <= 0 and current_credit_balance <= Decimal('0.00'):
+            # Wenn keine Zahlungen mehr übrig sind und Saldo <=0, dann als paid_off markieren, falls noch nicht geschehen
+            if credit_account.get('status') != 'paid_off':
+                credit_account['status'] = 'paid_off'
+                credit_account['balance'] = Decimal('0.00')
+                save_account(credit_account)
+                print(f"Credit {credit_account_id} already paid off or no remaining payments. Marked as paid_off.")
+            continue
+        
+        payment_attempted_count += 1
+        main_account_id = credit_account_id[2:] # Hauptkonto-ID ableiten
         main_account = get_account(main_account_id)
 
-        if not main_account:
-            print(f"Error: Main account {main_account_id} not found for credit {credit_account_id}")
+        if not main_account or main_account.get('status') == 'closed':
+            print(f"Error: Main account {main_account_id} for credit {credit_account_id} not found or closed. Skipping payment.")
+            # Hier könnte man eine Warnung im Kreditkonto hinterlegen
             continue
 
-        # Convert remaining_payments to int if it's a string
-        remaining_payments = int(credit_account['remaining_payments']) if isinstance(credit_account['remaining_payments'], str) else credit_account['remaining_payments']
+        scheduled_monthly_payment = credit_account.get('monthly_payment')
+        if not isinstance(scheduled_monthly_payment, Decimal):
+            scheduled_monthly_payment = Decimal(str(scheduled_monthly_payment if scheduled_monthly_payment is not None else '0.00'))
 
-        # Skip if no payments remaining
-        if remaining_payments <= 0:
+        if scheduled_monthly_payment <= Decimal('0.00'):
+            print(f"Warning: Credit {credit_account_id} has zero or negative monthly payment ({scheduled_monthly_payment}). Skipping.")
             continue
 
-        # Get current payment from schedule
-        payment_index = int(config.CREDIT_TERM_MONTHS - remaining_payments)
-        if payment_index >= len(credit_account['amortization_schedule']):
-            print(f"Error: Invalid payment index {payment_index} for credit {credit_account_id}")
-            continue
-
-        payment_info = credit_account['amortization_schedule'][payment_index]
+        repayment_tx_id = generate_id("RP") 
+        tx_status = "rejected" # Standardmäßig abgelehnt
+        tx_reason = ""
         
-        # Convert all amounts to Decimal
-        payment_amount = Decimal(str(payment_info['payment']))
-        principal_amount = Decimal(str(payment_info['principal']))
-        interest_amount = Decimal(str(payment_info['interest']))
+        current_main_balance = main_account.get('balance', Decimal('0.00'))
+        credit_balance_before_payment = credit_account.get('balance', Decimal('0.00'))
         
-        # Ensure balances are Decimal
-        main_account['balance'] = Decimal(str(main_account['balance']))
-        credit_account['balance'] = Decimal(str(credit_account['balance']))
+        actual_payment_amount_for_tx = scheduled_monthly_payment # Wird ggf. bei letzter Zahlung angepasst
+        principal_component = Decimal('0.00')
+        interest_component = Decimal('0.00')
+        
+        # Initialisiere Salden für Transaktionshistorie
+        final_main_balance = current_main_balance
+        final_credit_balance = credit_balance_before_payment
 
-        # Create payment transaction record
-        payment_tx = {
-            "transaction_id": generate_id("CRP"),
+        # Wenn das Hauptkonto bereits gesperrt ist ODER wenn das Kreditkonto gesperrt ist
+        # UND die Deckung nicht ausreicht, dann Zahlung fehlschlagen und missed_payment erhöhen.
+        payment_can_be_attempted = True
+        if main_account.get('status') == 'blocked':
+            tx_reason = "Main account is blocked."
+            print(f"Monthly payment attempt for {credit_account_id} (which is {credit_account.get('status')}) cannot be processed: {tx_reason}")
+            payment_can_be_attempted = False # Zahlung kann nicht abgebucht werden
+            # missed_payments_count wird unten erhöht, wenn das Kreditkonto 'active' oder 'blocked' war und eine Zahlung fällig war.
+
+        if payment_can_be_attempted and current_main_balance < scheduled_monthly_payment:
+            tx_reason = "Insufficient funds in main account for scheduled payment."
+            print(f"Monthly payment for {credit_account_id} (status: {credit_account.get('status')}) failed: {tx_reason}")
+            payment_can_be_attempted = False # Markiere als nicht erfolgreich
+            # Sperre Hauptkonto, falls nicht schon gesperrt
+            if main_account.get('status') != 'blocked':
+                main_account['status'] = 'blocked'
+                print(f"Main account {main_account_id} status changed to 'blocked' due to failed credit payment.")
+        
+        # Wenn das Kreditkonto 'active' oder 'blocked' war, war eine Zahlung fällig.
+        # Wenn sie nicht geleistet werden konnte (payment_can_be_attempted == False), dann missed_payment erhöhen.
+        if credit_account.get('status') in ['active', 'blocked'] and not payment_can_be_attempted:
+            current_missed_payments = 0
+            try:
+                current_missed_payments = int(credit_account.get('missed_payments_count', 0))
+            except (ValueError, TypeError):
+                print(f"Warning: could not convert missed_payments_count '{credit_account.get('missed_payments_count')}' to int for {credit_account_id}. Defaulting to 0.")
+            
+            credit_account['missed_payments_count'] = current_missed_payments + 1
+            credit_account['last_payment_attempt_date'] = current_date.isoformat()
+            # Wenn das Kreditkonto 'active' war, wird es jetzt 'blocked'
+            if credit_account.get('status') == 'active':
+                 credit_account['status'] = 'blocked' 
+                 print(f"Credit account {credit_account_id} status changed to 'blocked' due to missed payment.")
+
+        elif payment_can_be_attempted and credit_account.get('status') == 'active': # Zahlung erfolgreich für aktives Konto
+            tx_status = "completed"
+            
+            interest_component = (credit_balance_before_payment * config.CREDIT_MONTHLY_RATE).quantize(config.CHF_QUANTIZE, ROUND_HALF_UP)
+            principal_component = (scheduled_monthly_payment - interest_component).quantize(config.CHF_QUANTIZE, ROUND_HALF_UP)
+
+            if principal_component < Decimal('0'):
+                # Dies sollte bei korrekter Amortisation nicht passieren, kann aber bei Restsalden auftreten
+                principal_component = scheduled_monthly_payment - interest_component # kann negativ sein, wenn Zins > Rate
+                if principal_component < Decimal('0'): # Wenn Zins allein schon höher ist als Rate
+                    interest_component = scheduled_monthly_payment # Gesamte Rate ist Zins
+                    principal_component = Decimal('0') # Kein Tilgungsanteil
+            
+            if principal_component > credit_balance_before_payment: # Letzte Zahlung
+                principal_component = credit_balance_before_payment
+                actual_payment_amount_for_tx = principal_component + interest_component
+            
+            final_main_balance = current_main_balance - actual_payment_amount_for_tx
+            main_account['balance'] = final_main_balance
+            
+            final_credit_balance = credit_balance_before_payment - principal_component
+            credit_account['balance'] = final_credit_balance
+            
+            credit_account['remaining_payments'] = max(0, remaining_payments_int - 1)
+            credit_account['missed_payments_count'] = 0 
+            credit_account['last_payment_attempt_date'] = current_date.isoformat()
+            
+            if credit_account.get('status') == 'blocked':
+                 credit_account['status'] = 'active'
+                 print(f"Credit account {credit_account_id} status changed to 'active' due to successful payment.")
+
+            update_bank_ledger([
+                ('customer_liabilities', -actual_payment_amount_for_tx), 
+                ('credit_assets', -principal_component),       
+                ('income', +interest_component)                
+            ])
+            print(f"Monthly payment of {actual_payment_amount_for_tx} (P: {principal_component}, I: {interest_component}) processed for {credit_account_id}. Main acc new balance: {final_main_balance}")
+            processed_successful_count += 1
+
+        # Transaktionshistorie erstellen
+        repayment_tx = {
+            "transaction_id": repayment_tx_id,
             "type": "credit_repayment",
             "credit_account": credit_account_id,
             "main_account": main_account_id,
-            "amount": payment_amount,
-            "principal_amount": principal_amount,
-            "interest_amount": interest_amount,
+            "amount": actual_payment_amount_for_tx, # Der Betrag, der tatsächlich vom Hauptkonto abgebucht wurde/hätte werden sollen
+            "principal_amount": principal_component if tx_status == 'completed' else Decimal('0.00'),
+            "interest_amount": interest_component if tx_status == 'completed' else Decimal('0.00'),
             "timestamp": current_date.isoformat(),
-            "status": "pending",
-            "credit_balance_before": credit_account['balance'],
-            "credit_balance_after": credit_account['balance'],
-            "account_balance_before": main_account['balance'],
-            "account_balance_after": main_account['balance']
+            "status": tx_status,
+            "reason": tx_reason,
+            "credit_balance_before": credit_balance_before_payment,
+            "credit_balance_after": final_credit_balance, # Endgültiger Kreditsaldo
+            "account_balance_before": current_main_balance,
+            "account_balance_after": final_main_balance    # Endgültiger Hauptkontosaldo
         }
 
-        # Check if payment can be made
-        if main_account['balance'] >= payment_amount:
-            # Process payment
-            main_account['balance'] -= payment_amount
-            credit_account['balance'] -= principal_amount
-            credit_account['remaining_payments'] = remaining_payments - 1
-            
-            # Update payment transaction
-            payment_tx["status"] = "completed"
-            payment_tx["credit_balance_after"] = credit_account['balance']
-            payment_tx["account_balance_after"] = main_account['balance']
-            
-            # Reset missed payments counter if payment successful
-            credit_account['missed_payments_count'] = 0
-            credit_account['last_payment_attempt_date'] = current_date.isoformat()
-            
-            # Update ledger
-            update_bank_ledger([
-                ('customer_liabilities', -payment_amount),
-                ('credit_assets', -principal_amount),
-                ('income', +interest_amount)
-            ])
-            
-            print(f"Credit payment processed: {payment_amount} from {main_account_id} to {credit_account_id}")
-            payments_processed += 1
-            
-            # Check if credit is fully paid
-            if credit_account['balance'] <= Decimal('0.00'):
+        # Transaktion zu beiden Konten hinzufügen (speichert die Konten)
+        if main_account : add_transaction_to_account(main_account, repayment_tx)
+        add_transaction_to_account(credit_account, repayment_tx) 
+
+        if credit_account['balance'] <= Decimal('0.00') and tx_status == 'completed':
+            credit_account['balance'] = Decimal('0.00')
+            if credit_account['status'] != 'paid_off':
                 credit_account['status'] = 'paid_off'
-                print(f"Credit {credit_account_id} fully paid off")
+                credit_account['remaining_payments'] = 0
+                print(f"Credit {credit_account_id} fully paid off.")
+                save_account(credit_account) # Sicherstellen, dass der paid_off Status gespeichert wird
         else:
-            # Payment failed - handle account blocking
-            payment_tx["status"] = "rejected"
-            payment_tx["reason"] = "Insufficient funds"
-            
-            # Increment missed payments counter
-            credit_account['missed_payments_count'] = credit_account.get('missed_payments_count', 0) + 1
-            credit_account['last_payment_attempt_date'] = current_date.isoformat()
-            
-            # Block account if not already blocked
-            if main_account['status'] == 'active':
-                main_account['status'] = 'blocked'
-                main_account['blocked_at'] = current_date.isoformat()
-                accounts_blocked += 1
-                print(f"Account {main_account_id} blocked due to failed credit payment")
-            
-            payments_failed += 1
-            print(f"Credit payment failed: {main_account_id} has insufficient funds ({main_account['balance']})")
+            # Speichere credit_account, falls 'missed_payments_count' oder 'status' sich geändert hat, auch bei fehlgeschlagener Zahlung
+            save_account(credit_account)
 
-        # Save changes
-        save_account(main_account)
-        save_account(credit_account)
-        
-        # Add transaction records
-        add_transaction_to_account(main_account, payment_tx)
-        add_transaction_to_account(credit_account, payment_tx)
 
-    print(f"--- Monthly Credit Payment Processing Complete ---")
-    print(f"Payments Processed: {payments_processed}")
-    print(f"Payments Failed: {payments_failed}")
-    print(f"Accounts Blocked: {accounts_blocked}")
+    if payment_attempted_count == 0:
+        print("No active credits found needing monthly payments for this period.")
+    elif processed_successful_count == 0 and payment_attempted_count > 0:
+        print(f"{payment_attempted_count} payment attempts for active credits, all failed or not applicable this period.")
+    print("--- Monthly Credit Payment Processing Complete ---")
 
 def calculate_daily_penalties(current_date):
-    """Calculates daily penalties for blocked accounts and handles account reopening if conditions are met."""
-    # Import here to avoid circular imports
-    from .account_service import get_account, add_transaction_to_account, save_account
+    """
+    Berechnet tägliche Strafzinsen für überfällige Kredite.
+    Stellt sicher, dass Strafzinsen nur einmal pro Tag für gesperrte Konten mit positivem Saldo berechnet werden.
+    
+    Args:
+        current_date (datetime): Aktuelles Systemdatum
+    """
+    # Import hier, um zirkuläre Imports bei Bedarf zu handhaben (obwohl get_account ok sein sollte)
+    from .account_service import get_account, save_account 
+
     print(f"\n--- Calculating Daily Penalties for {current_date.isoformat()} ---")
+    penalties_calculated_count = 0
 
-    all_files = os.listdir(config.ACCOUNTS_DIR)
-    credit_files = [f for f in all_files if f.startswith('CR') and f.endswith('.json')]
-
-    penalties_applied = 0
-    accounts_reopened = 0
-
-    for credit_file in credit_files:
-        credit_account = load_json(os.path.join(config.ACCOUNTS_DIR, credit_file))
-        
-        # Skip inactive or paid off credits
-        if not credit_account or credit_account['status'] not in ['active', 'blocked']:
+    for filename in os.listdir(config.ACCOUNTS_DIR):
+        if not filename.startswith('CRCH-') or not filename.endswith('.json'):
             continue
 
-        credit_account_id = credit_account['account_id']
-        main_account_id = credit_account_id[2:]  # Remove 'CR' prefix
-        main_account = get_account(main_account_id)
-
-        if not main_account:
-            print(f"Error: Main account {main_account_id} not found for credit {credit_account_id}")
-            continue
-
-        # Only process if main account is blocked
-        if main_account['status'] != 'blocked':
-            continue
-
-        # Calculate daily penalty (30% annual rate / 365 days)
-        daily_penalty_rate = Decimal('0.30') / Decimal('365')
-        penalty_amount = (credit_account['balance'] * daily_penalty_rate).quantize(config.CHF_QUANTIZE, ROUND_HALF_UP)
-
-        # Create penalty transaction
-        penalty_tx = {
-            "transaction_id": generate_id("PEN"),
-            "type": "daily_penalty",
-            "credit_account": credit_account_id,
-            "main_account": main_account_id,
-            "amount": penalty_amount,
-            "timestamp": current_date.isoformat(),
-            "status": "completed",
-            "credit_balance_before": credit_account['balance'],
-            "credit_balance_after": credit_account['balance'] + penalty_amount,
-            "account_balance_before": main_account['balance'],
-            "account_balance_after": main_account['balance']
-        }
-
-        # Apply penalty
-        credit_account['balance'] += penalty_amount
-        credit_account['penalty_accrued'] = credit_account.get('penalty_accrued', Decimal('0.00')) + penalty_amount
-        penalties_applied += 1
-
-        # Check if account can be reopened
-        if main_account['balance'] >= Decimal('0.00'):
-            # Calculate total outstanding amount (credit balance + accrued penalties)
-            total_outstanding = credit_account['balance'] + credit_account['penalty_accrued']
-            
-            if main_account['balance'] >= total_outstanding:
-                # Account can be reopened
-                main_account['status'] = 'active'
-                main_account['reopened_at'] = current_date.isoformat()
-                credit_account['status'] = 'active'
-                credit_account['penalty_accrued'] = Decimal('0.00')
-                accounts_reopened += 1
-                
-                # Create reopening transaction
-                reopen_tx = {
-                    "transaction_id": generate_id("REO"),
-                    "type": "account_reopening",
-                    "credit_account": credit_account_id,
-                    "main_account": main_account_id,
-                    "amount": total_outstanding,
-                    "timestamp": current_date.isoformat(),
-                    "status": "completed",
-                    "credit_balance_before": credit_account['balance'],
-                    "credit_balance_after": credit_account['balance'],
-                    "account_balance_before": main_account['balance'],
-                    "account_balance_after": main_account['balance'] - total_outstanding,
-                    "note": f"Account reopened after paying outstanding balance and penalties"
-                }
-                
-                # Apply payment
-                main_account['balance'] -= total_outstanding
-                credit_account['balance'] = Decimal('0.00')
-                
-                # Update ledger
-                update_bank_ledger([
-                    ('customer_liabilities', -total_outstanding),
-                    ('credit_assets', -credit_account['balance']),
-                    ('income', +credit_account['penalty_accrued'])
-                ])
-                
-                # Add reopening transaction
-                add_transaction_to_account(main_account, reopen_tx)
-                add_transaction_to_account(credit_account, reopen_tx)
-                
-                print(f"Account {main_account_id} reopened after paying outstanding balance and penalties")
-            else:
-                print(f"Account {main_account_id} has insufficient funds to cover outstanding balance and penalties")
-
-        # Save changes
-        save_account(main_account)
-        save_account(credit_account)
-        
-        # Add penalty transaction
-        add_transaction_to_account(main_account, penalty_tx)
-        add_transaction_to_account(credit_account, penalty_tx)
-
-    print(f"--- Daily Penalty Processing Complete ---")
-    print(f"Penalties Applied: {penalties_applied}")
-    print(f"Accounts Reopened: {accounts_reopened}")
-
-def write_off_bad_credits(current_date):
-    """Identifies and writes off credits with no payments for WRITE_OFF_MONTHS."""
-    # Import here to avoid circular imports
-    from .account_service import get_account, add_transaction_to_account, save_account
-    print(f"\n--- Checking for Bad Credit Write-offs for {current_date.strftime('%Y-%m-%d')} ---")
-    written_off_count = 0
-    all_credit_ids = [f.replace('.json', '') for f in os.listdir(config.ACCOUNTS_DIR) if
-                      f.startswith('CR') and f.endswith('.json')]
-
-    for credit_account_id in all_credit_ids:
+        credit_account_id = filename[:-5]
         credit_account = get_account(credit_account_id)
 
-        # Check accounts that are blocked and have missed payments
-        if not credit_account or credit_account['status'] != 'blocked' or \
-                credit_account['balance'] <= 0 or credit_account.get('missed_payments_count', 0) == 0:
+        if not credit_account:
+            print(f"Warning: Could not load credit account {credit_account_id} in calculate_daily_penalties.")
+            continue
+        
+        # DEBUG: Show initial state for this account in this run
+        print(f"DEBUG PENALTY: Processing {credit_account_id}, Status: {credit_account.get('status')}, Balance: {credit_account.get('balance')}, LastPenaltyDate: {credit_account.get('last_penalty_calculation_date')}, CurrentDateForPenalty: {current_date.isoformat()}")
+
+        if credit_account.get('status') != 'blocked':
             continue
 
-        # Check how long ago the *last payment attempt* was made.
-        # If no payment has *ever* succeeded, maybe use credit_start_date?
-        # Using last_payment_attempt_date is more robust if payments started then stopped.
-        last_attempt_str = credit_account.get('last_payment_attempt_date')
-        if not last_attempt_str:
-            # If no attempts recorded, maybe check start date (only if blocked for a while)
-            start_date_str = credit_account.get('credit_start_date')
-            if not start_date_str: continue  # Cannot determine age
-            last_relevant_date = parse_datetime(start_date_str)
+        current_credit_balance = credit_account.get('balance', Decimal('0.00'))
+        # Sicherstellen, dass es Decimal ist (obwohl get_account dies tun sollte)
+        if not isinstance(current_credit_balance, Decimal):
+            current_credit_balance = Decimal(str(current_credit_balance))
 
-        else:
-            last_relevant_date = parse_datetime(last_attempt_str)
+        if current_credit_balance <= Decimal('0.00'):
+            continue # Keine Strafzinsen auf Null- oder negativem Saldo
 
-        if not last_relevant_date: continue  # Skip if date is invalid
+        # Prüfen, ob für heute bereits Strafzinsen berechnet wurden
+        last_penalty_date_str = credit_account.get('last_penalty_calculation_date')
+        if last_penalty_date_str:
+            try:
+                # Nur das Datum vergleichen, ohne Zeitanteil, falls current_date Zeit hat
+                last_penalty_date = parse_datetime(last_penalty_date_str).date()
+                if last_penalty_date == current_date.date():
+                    # print(f"Daily penalty for {credit_account_id} already calculated on {last_penalty_date_str}. Skipping.")
+                    continue
+            except Exception as e:
+                print(f"Warning: Could not parse last_penalty_calculation_date '{last_penalty_date_str}' for {credit_account_id}: {e}")
 
-        # Check if WRITE_OFF_MONTHS have passed since the last attempt/start
-        if current_date >= (last_relevant_date + relativedelta(months=config.WRITE_OFF_MONTHS)):
-            written_off_count += 1
-            write_off_amount = credit_account['balance']  # The amount to write off
-            transaction_id = generate_id("WOFF")  # Write Off
-            timestamp = current_date.isoformat()
+        daily_penalty_rate = config.PENALTY_INTEREST_RATE_PA / Decimal('365')
+        # Berechne den Strafzinsbetrag und runde ihn korrekt
+        penalty_amount_today = (current_credit_balance * daily_penalty_rate).quantize(config.CHF_QUANTIZE, ROUND_HALF_UP)
 
-            print(
-                f"Writing Off Credit: {credit_account_id}. Amount: {write_off_amount}. Reason: Non-payment for >{config.WRITE_OFF_MONTHS} months.")
+        if penalty_amount_today > Decimal('0.00'):
+            accrued_penalties_before = credit_account.get('penalty_accrued', Decimal('0.00'))
+            if not isinstance(accrued_penalties_before, Decimal):
+                accrued_penalties_before = Decimal(str(accrued_penalties_before))
+            
+            new_total_accrued_penalties = accrued_penalties_before + penalty_amount_today
+            credit_account['penalty_accrued'] = new_total_accrued_penalties
+            credit_account['last_penalty_calculation_date'] = current_date.isoformat() # Nur Datumsteil wäre besser, aber ISO reicht für den Test
+            
+            print(f"Daily penalty of {penalty_amount_today:.2f} accrued for {credit_account_id}. Balance: {current_credit_balance:.2f}, Old Accrued: {accrued_penalties_before:.2f}, New Total Accrued: {new_total_accrued_penalties:.2f}")
+            penalties_calculated_count += 1
+            
+            # Ledger Update für akkumulierte Strafzinsen (als Ertrag für die Bank und Erhöhung der Forderung)
+            # Dies sollte idealerweise beim Entsperren oder Abschreiben realisiert werden,
+            # aber hier zu loggen, dass die Forderung entsteht, ist auch eine Möglichkeit.
+            # update_bank_ledger([('income', penalty_amount_today), ('credit_assets_penalties', +penalty_amount_today)])
+            # Fürs Erste lassen wir das Ledger-Update hier weg, es wird beim Entsperrversuch/Abschreibung relevant.
 
-            tx_record = {
-                "transaction_id": transaction_id,
-                "type": "credit_write_off",
-                "credit_account": credit_account_id,
-                "amount": write_off_amount,
-                "timestamp": timestamp,
-                "status": "completed",
-                "credit_balance_before": write_off_amount,
-                "credit_balance_after": Decimal('0.00'),
-            }
+            save_account(credit_account) # Speichere das Konto mit den aktualisierten Strafen
+        # else:
+            # print(f"Calculated penalty_amount for {credit_account_id} is {penalty_amount_today:.2f}, not accruing.")
 
-            # Update credit account
+    if penalties_calculated_count == 0:
+        print("No daily penalties were newly calculated in this run (either no eligible accounts or already calculated today).")
+    print("--- Daily Penalty Processing Complete ---")
+
+def write_off_bad_credits(current_date):
+    """
+    Schreibt Kredite ab, die zu lange überfällig sind.
+    
+    Args:
+        current_date (datetime): Aktuelles Systemdatum
+        
+    Hinweis:
+        - Wird am 1. des Monats ausgeführt
+        - Prüft auf zu viele verpasste Zahlungen
+        - Schreibt Kredite ab und markiert sie als verloren
+    """
+    print(f"\n--- Processing Credit Write-offs for {current_date.isoformat()} ---")
+    # Import für get_account und save_account, falls noch nicht oben global genug
+    from .account_service import get_account, save_account
+    written_off_count = 0
+
+    for filename in os.listdir(config.ACCOUNTS_DIR):
+        if not filename.startswith('CRCH-') or not filename.endswith('.json'):
+            continue
+        
+        credit_account_id = filename[:-5]
+        credit_account = get_account(credit_account_id) # Verwende get_account für korrekte Typen
+
+        if not credit_account:
+            print(f"Warning: Could not load credit account {credit_account_id} in write_off_bad_credits.")
+            continue
+            
+        # Sollte 'blocked' Konten für Abschreibung prüfen
+        if credit_account.get('status') != 'blocked':
+            continue
+        
+        missed_payments_val = credit_account.get('missed_payments_count', 0)
+        try:
+            missed_payments_int = int(missed_payments_val)
+        except (ValueError, TypeError):
+            print(f"Warning: Could not convert missed_payments '{missed_payments_val}' to int for {credit_account_id} in write_off. Defaulting to 0.")
+            missed_payments_int = 0
+                
+        # Prüfen ob zu viele Zahlungen verpasst wurden
+        if missed_payments_int >= config.MAX_MISSED_PAYMENTS:
+            balance_at_write_off = credit_account.get('balance', Decimal('0.00'))
+            penalties_at_write_off = credit_account.get('penalty_accrued', Decimal('0.00'))
+            total_loss = balance_at_write_off + penalties_at_write_off
+
             credit_account['status'] = 'written_off'
-            credit_account['balance'] = Decimal('0.00')
-            credit_account['remaining_payments'] = 0  # No more payments due
-
-            # Ledger Update (Decrease asset, Decrease income/recognize loss)
+            credit_account['write_off_date'] = current_date.isoformat()
+            credit_account['balance_at_write_off'] = balance_at_write_off # Saldo zum Zeitpunkt der Abschreibung festhalten
+            credit_account['penalties_at_write_off'] = penalties_at_write_off
+            # Saldo und Strafzinsen auf Null setzen nach Abschreibung für die Bankbilanz intern?
+            # Oder den Saldo so lassen, um den Verlust zu dokumentieren? Aktuell bleibt er.
+            
+            print(f"Credit {credit_account_id} written off. Amount: {balance_at_write_off}, Penalties: {penalties_at_write_off}, Total Loss: {total_loss}")
+            written_off_count += 1
+            
+            # Ledger Update für Abschreibung
+            # Reduziere 'credit_assets' um den abgeschriebenen Betrag (Kapital)
+            # Erhöhe 'expenses' oder spezifisches 'credit_loss_expenses' Konto um den Totalverlust
+            # Reduziere 'income' oder 'credit_assets_penalties' um die abgeschriebenen Strafzinsen, da sie nicht realisiert wurden
             update_bank_ledger([
-                ('credit_assets', -write_off_amount),
-                ('income', -write_off_amount)  # Loss reduces income
+                ('credit_assets', -balance_at_write_off), # Reduziert den Wert der Kreditanlagen
+                ('income', -penalties_at_write_off), # Reduziert (ggf. negative) Einnahmen aus Strafzinsen, da uneinbringlich
+                ('credit_losses', +total_loss) # Erfasst den Verlust als Aufwand
             ])
-
-            # Save transaction and account state
-            add_transaction_to_account(credit_account, tx_record)  # Saves account
-
-    print(f"--- Credit Write-offs Complete. Written Off: {written_off_count} ---")
+            
+            save_account(credit_account)
+    
+    if written_off_count > 0:
+        print(f"--- {written_off_count} credit(s) written off ---")
+    else:
+        print("No credits met write-off criteria in this run.")

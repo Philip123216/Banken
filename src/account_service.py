@@ -1,4 +1,8 @@
 # src/account_service.py
+# Kontoverwaltungsmodul für das Smart-Phone Haifisch Bank System
+# Enthält Funktionen zur Erstellung, Verwaltung und Schließung von Konten
+# Sowie die Verarbeitung von Kontogebühren und Transaktionen
+
 from datetime import datetime
 from decimal import Decimal
 import os
@@ -10,8 +14,21 @@ from .ledger_service import update_bank_ledger
 
 
 def create_account(customer_id):
-    """Creates a regular account and an associated (inactive) credit account for a customer."""
-    # Import here to avoid circular imports
+    """
+    Erstellt ein reguläres Konto und ein zugehöriges (inaktives) Kreditkonto für einen Kunden.
+    
+    Args:
+        customer_id (str): ID des Kunden
+        
+    Returns:
+        tuple: (account_data, credit_account_data) oder (None, None) bei Fehler
+        
+    Hinweis:
+        - Reguläres Konto erhält Präfix 'CH'
+        - Kreditkonto erhält Präfix 'CR'
+        - Beide Konten werden mit Status 'active' bzw. 'inactive' erstellt
+    """
+    # Import hier um zirkuläre Imports zu vermeiden
     from .time_processing_service import get_system_date
 
     customer_data = get_customer(customer_id)
@@ -23,43 +40,43 @@ def create_account(customer_id):
         print(f"Error: Customer {customer_id} already has an account.")
         return None, None
 
-    # Create Regular Account
-    account_id = generate_id("CH")  # Using CH prefix for IBAN-like ID
+    # Reguläres Konto erstellen
+    account_id = generate_id("CH")  # CH-Präfix für IBAN-ähnliche ID
     now_iso = datetime.now().isoformat()
-    system_date_iso = get_system_date().isoformat()  # Use system date for fee tracking
+    system_date_iso = get_system_date().isoformat()  # Systemdatum für Gebührenberechnung
 
     account_data = {
         "account_id": account_id,
         "customer_id": customer_id,
         "balance": Decimal("0.00"),
-        "status": "active",  # 'active', 'blocked', 'closed'
+        "status": "active",  # Mögliche Status: 'active', 'blocked', 'closed'
         "created_at": now_iso,
-        "last_fee_date": system_date_iso,  # Initialize fee date
-        "transactions": []
+        "last_fee_date": system_date_iso,  # Initialisierung des Gebührendatums
+        "transactions": []  # Transaktionshistorie
     }
     account_file_path = os.path.join(config.ACCOUNTS_DIR, f"{account_id}.json")
     save_json(account_file_path, account_data)
     print(f"Regular account created: {account_id}")
 
-    # Create Associated Credit Account (initialized but inactive)
+    # Zugehöriges Kreditkonto erstellen (initialisiert aber inaktiv)
     credit_account_id = f"CR{account_id}"
     credit_account_data = {
         "account_id": credit_account_id,
         "customer_id": customer_id,
-        "balance": Decimal("0.00"),  # Outstanding loan amount
-        "status": "inactive",  # 'inactive', 'active', 'paid_off', 'blocked', 'written_off'
+        "balance": Decimal("0.00"),  # Ausstehender Kreditbetrag
+        "status": "inactive",  # Mögliche Status: 'inactive', 'active', 'paid_off', 'blocked', 'written_off'
         "created_at": now_iso,
-        "credit_start_date": None,
-        "credit_end_date": None,
-        "original_amount": Decimal("0.00"),
-        "monthly_payment": Decimal("0.00"),
-        "monthly_rate": config.CREDIT_MONTHLY_RATE,
-        "remaining_payments": 0,
-        "amortization_schedule": [],
-        "transactions": [],
-        "missed_payments_count": 0,  # Track consecutive missed payments
-        "last_payment_attempt_date": None,
-        "penalty_accrued": Decimal("0.00")  # Track accrued penalties while blocked
+        "credit_start_date": None,  # Wird bei Kreditvergabe gesetzt
+        "credit_end_date": None,    # Wird bei Kreditvergabe gesetzt
+        "original_amount": Decimal("0.00"),  # Ursprünglicher Kreditbetrag
+        "monthly_payment": Decimal("0.00"),  # Monatliche Rate
+        "monthly_rate": config.CREDIT_MONTHLY_RATE,  # Monatlicher Zinssatz
+        "remaining_payments": 0,  # Verbleibende Zahlungen
+        "amortization_schedule": [],  # Tilgungsplan
+        "transactions": [],  # Transaktionshistorie
+        "missed_payments_count": 0,  # Zählt aufeinanderfolgende versäumte Zahlungen
+        "last_payment_attempt_date": None,  # Datum des letzten Zahlungsversuchs
+        "penalty_accrued": Decimal("0.00")  # Aufgelaufene Strafen während Blockierung
     }
     credit_account_file_path = os.path.join(config.ACCOUNTS_DIR, f"{credit_account_id}.json")
     save_json(credit_account_file_path, credit_account_data)
@@ -68,17 +85,52 @@ def create_account(customer_id):
     return account_data, credit_account_data
 
 def get_account(account_id):
-    """Retrieves account information (regular or credit)."""
+    """
+    Ruft Kontoinformationen ab (reguläres oder Kreditkonto).
+    
+    Args:
+        account_id (str): ID des Kontos
+        
+    Returns:
+        dict/None: Kontodaten oder None wenn nicht gefunden
+        
+    Hinweis:
+        Stellt sicher, dass der Kontostand als Decimal-Objekt zurückgegeben wird
+    """
     file_path = os.path.join(config.ACCOUNTS_DIR, f"{account_id}.json")
     account_data = load_json(file_path)
-    # Ensure balance is Decimal
-    if account_data and 'balance' in account_data:
-        if isinstance(account_data['balance'], str):
-            account_data['balance'] = Decimal(account_data['balance'])
+    
+    if account_data:
+        # Felder, die Decimal sein sollten, explizit konvertieren, falls sie als String geladen wurden
+        decimal_fields = ['balance', 'original_amount', 'monthly_payment', 'penalty_accrued']
+        for field in decimal_fields:
+            if field in account_data and isinstance(account_data[field], str):
+                try:
+                    account_data[field] = Decimal(account_data[field])
+                except Exception as e:
+                    print(f"Warning: Could not convert field '{field}' with value '{account_data[field]}' to Decimal for account {account_id}. Error: {e}")
+                    # Optional: Setze auf None oder einen Standard-Decimal-Wert, falls Konvertierung fehlschlägt
+                    account_data[field] = None # Oder Decimal('0.00') je nach Anforderung
+            elif field in account_data and not isinstance(account_data[field], Decimal) and account_data[field] is not None:
+                 # Fall: Es ist weder String noch Decimal (z.B. int oder float), versuche Konvertierung
+                try:
+                    account_data[field] = Decimal(str(account_data[field]))
+                except Exception as e:
+                    print(f"Warning: Could not convert non-string, non-decimal field '{field}' with value '{account_data[field]}' to Decimal for account {account_id}. Error: {e}")
+                    account_data[field] = None
+
     return account_data
 
 def get_customer_account(customer_id):
-    """Finds the regular account for a customer."""
+    """
+    Findet das reguläre Konto eines Kunden.
+    
+    Args:
+        customer_id (str): ID des Kunden
+        
+    Returns:
+        dict/None: Kontodaten oder None wenn nicht gefunden
+    """
     all_files = os.listdir(config.ACCOUNTS_DIR)
     account_files = [f for f in all_files if f.endswith('.json') and not f.startswith('CR')]
 
@@ -89,7 +141,15 @@ def get_customer_account(customer_id):
     return None
 
 def save_account(account_data):
-    """Saves account data back to its file."""
+    """
+    Speichert Kontodaten in der entsprechenden Datei.
+    
+    Args:
+        account_data (dict): Zu speichernde Kontodaten
+        
+    Returns:
+        bool: True bei Erfolg, False bei Fehler
+    """
     if not account_data or 'account_id' not in account_data:
         print("Error: Invalid account data for saving.")
         return False
@@ -99,7 +159,16 @@ def save_account(account_data):
     return True
 
 def add_transaction_to_account(account_data_param, transaction_data):
-    """Adds a transaction record to an account's history using the provided account_data object."""
+    """
+    Fügt einen Transaktionsdatensatz zur Kontohistorie hinzu.
+    
+    Args:
+        account_data_param (dict): Kontodaten-Objekt
+        transaction_data (dict): Transaktionsdaten
+        
+    Returns:
+        bool: True bei Erfolg, False bei Fehler
+    """
     if not account_data_param:
         print(f"Error: Invalid account_data provided to add_transaction_to_account.")
         return False
@@ -111,90 +180,112 @@ def add_transaction_to_account(account_data_param, transaction_data):
     return save_account(account_data_param)
 
 def process_quarterly_fees(current_date):
-    """Processes quarterly account fees for all active accounts."""
+    """
+    Verarbeitet die vierteljährlichen Kontogebühren.
+    Prüft für jedes aktive Konto, ob seit der letzten Gebühr ein Quartal vergangen ist.
+    """
     print(f"\n--- Processing Quarterly Fees for {current_date.isoformat()} ---")
-
-    all_files = os.listdir(config.ACCOUNTS_DIR)
-    account_files = [f for f in all_files if f.endswith('.json') and not f.startswith('CR')]
-
-    fees_charged = 0
-    fees_failed = 0
-
-    for acc_file in account_files:
-        account_data = load_json(os.path.join(config.ACCOUNTS_DIR, acc_file))
-
-        # Skip inactive accounts
-        if not account_data or account_data.get('status') != 'active':
+    charged_count = 0
+    
+    for filename in os.listdir(config.ACCOUNTS_DIR):
+        if not filename.startswith('CH-') or not filename.endswith('.json'):
+            continue
+            
+        account_id = filename[:-5]
+        account_path = os.path.join(config.ACCOUNTS_DIR, filename)
+        account = load_json(account_path) # load_json sollte Decimal zurückgeben
+        
+        if not account or account.get('status') != 'active':
             continue
 
-        account_id = account_data['account_id']
-        last_fee_date_str = account_data.get('last_fee_date')
-
+        last_fee_date_str = account.get('last_fee_date')
         if not last_fee_date_str:
-            print(f"Warning: Account {account_id} missing last_fee_date. Setting to current date.")
-            account_data['last_fee_date'] = current_date.isoformat()
-            save_account(account_data)
+            # Fallback oder Fehlerbehandlung: Setze auf created_at oder aktuelles Datum - 3 Monate
+            # Für neue Konten ist last_fee_date = created_at, Gebühr erst nach 3 Monaten fällig
+            last_fee_date = parse_datetime(account.get('created_at'))
+            if not last_fee_date:
+                 print(f"Warning: Could not determine last_fee_date or created_at for {account_id}. Skipping fee.")
+                 continue
+        else:
+            last_fee_date = parse_datetime(last_fee_date_str)
+
+        if not last_fee_date:
+            print(f"Warning: Could not parse last_fee_date for {account_id}. Skipping fee.")
             continue
+            
+        # Nächstes Fälligkeitsdatum für die Gebühr (letzte Gebühr + 3 Monate)
+        # Wichtig: relativedelta muss importiert sein: from dateutil.relativedelta import relativedelta
+        next_fee_due_date = last_fee_date + relativedelta(months=3)
 
-        last_fee_date = parse_datetime(last_fee_date_str)
+        # Ist das current_date am oder nach dem Fälligkeitsdatum?
+        # Die Überprüfung des spezifischen Quartalsmonats (z.B. 3,6,9,12) geschieht durch den Aufrufer (time_processing_service)
+        # Hier prüfen wir primär, ob die Zeitspanne von 3 Monaten seit der letzten Gebühr erreicht ist.
+        if current_date >= next_fee_due_date:
+            fee_amount = config.QUARTERLY_FEE
+            balance = account.get('balance', Decimal('0.00')) # Sicherstellen, dass es Decimal ist
+            if not isinstance(balance, Decimal): # Zusätzliche Absicherung
+                balance = Decimal(str(balance))
 
-        # Check if at least 3 months have passed since last fee
-        months_diff = (current_date.year - last_fee_date.year) * 12 + (current_date.month - last_fee_date.month)
+            transaction_status = "completed"
+            reason = ""
+            new_balance = balance # Standardmäßig ändert sich der Saldo nicht (falls Gebühr fehlschlägt)
 
-        if months_diff >= 3:
-            # Charge quarterly fee
-            balance_before = account_data['balance']
-            if isinstance(balance_before, str):
-                balance_before = Decimal(balance_before)
-
-            # Create fee transaction record
-            fee_tx = {
-                "transaction_id": generate_id("FEE"),
-                "type": "quarterly_fee",
-                "amount": config.QUARTERLY_FEE,
-                "timestamp": current_date.isoformat(),
-                "status": "pending",
-                "balance_before": balance_before,
-                "balance_after": balance_before  # Will update if successful
-            }
-
-            if balance_before >= config.QUARTERLY_FEE:
-                # Sufficient funds - charge fee
-                account_data['balance'] = balance_before - config.QUARTERLY_FEE
-                fee_tx["status"] = "completed"
-                fee_tx["balance_after"] = account_data['balance']
-
-                # Update last fee date to current date
-                account_data['last_fee_date'] = current_date.isoformat()
-
-                # Update ledger
-                update_bank_ledger([
-                    ('customer_liabilities', -config.QUARTERLY_FEE),
-                    ('income', +config.QUARTERLY_FEE)
-                ])
-
-                print(f"Quarterly fee charged: {config.QUARTERLY_FEE} from {account_id}. New balance: {account_data['balance']}")
-                fees_charged += 1
+            if balance >= fee_amount:
+                new_balance = balance - fee_amount
+                account['balance'] = new_balance
+                account['last_fee_date'] = current_date.isoformat() # Wichtig: Datum aktualisieren!
+                print(f"Quarterly fee of {fee_amount} charged to {account_id}. New balance: {account['balance']}")
+                charged_count += 1
             else:
-                # Insufficient funds - record failed attempt but don't change balance
-                fee_tx["status"] = "rejected"
-                fee_tx["reason"] = "Insufficient funds"
-                print(f"Quarterly fee failed: {account_id} has insufficient funds ({balance_before})")
-                fees_failed += 1
-
-            # Save transaction and account state
-            add_transaction_to_account(account_data, fee_tx)  # This saves the account
-
-    print(f"--- Quarterly Fee Processing Complete. Charged: {fees_charged}, Failed: {fees_failed} ---")
+                transaction_status = "rejected" 
+                reason = "Insufficient funds for quarterly fee"
+                print(f"Warning: Insufficient funds for quarterly fee on {account_id}. Fee not charged.")
+            
+            # Gebührentransaktion erstellen und speichern
+            fee_tx = {
+                "transaction_id": generate_id("QF"),
+                "type": "quarterly_fee",
+                "account": account_id,
+                "amount": fee_amount,
+                "timestamp": current_date.isoformat(),
+                "status": transaction_status,
+                "balance_before": balance,
+                "balance_after": new_balance, 
+                "reason": reason
+            }
+            # add_transaction_to_account speichert das account-Objekt danach
+            if not add_transaction_to_account(account, fee_tx):
+                 print(f"Error: Could not add quarterly fee transaction to account {account_id}")
+            # Das account Objekt wurde durch add_transaction_to_account bereits gespeichert (da es save_account aufruft)
+            # Es ist nicht nötig, save_json(account_path, account) hier erneut aufzurufen,
+            # es sei denn, add_transaction_to_account gibt das modifizierte Konto zurück und speichert nicht selbst.
+            # Annahme: add_transaction_to_account(account_obj, tx) modifiziert account_obj und ruft save_account(account_obj) auf.
+    
+    if charged_count == 0:
+        print("No accounts due for quarterly fees this period based on their last_fee_date.")
+    print("--- Quarterly Fee Processing Complete ---")
 
 def close_account(account_id):
-    """Closes a customer's account if it has zero balance and no active credit."""
+    """
+    Schließt ein Kundenkonto, wenn der Kontostand null ist und kein aktiver Kredit besteht.
+    
+    Args:
+        account_id (str): ID des zu schließenden Kontos
+        
+    Returns:
+        bool: True bei erfolgreicher Schließung, False bei Fehler
+        
+    Hinweis:
+        - Prüft, ob das Konto bereits geschlossen ist
+        - Prüft, ob der Kontostand null ist
+        - Prüft, ob ein aktiver Kredit besteht
+    """
     account_data = get_account(account_id)
     if not account_data:
         print(f"Error: Account {account_id} not found.")
         return False
 
-    # Check if account is already closed
+    # Prüfen, ob das Konto bereits geschlossen ist
     if account_data['status'] == 'closed':
         print(f"Account {account_id} is already closed.")
         return True

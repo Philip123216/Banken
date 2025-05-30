@@ -1,4 +1,7 @@
 # src/time_processing_service.py
+# Zeitverwaltungsmodul für das Smart-Phone Haifisch Bank System
+# Steuert die Simulation der Zeit und periodische Aufgaben
+
 from datetime import datetime
 import os
 from . import config
@@ -7,7 +10,17 @@ from . import credit_service
 from . import account_service
 
 def get_system_date():
-    """Loads the current system date."""
+    """
+    Lädt das aktuelle Systemdatum.
+    
+    Returns:
+        datetime: Aktuelles Systemdatum
+        
+    Hinweis:
+        - Liest das Datum aus der Systemdatei
+        - Initialisiert mit aktuellem Datum falls nicht vorhanden
+        - Stellt sicher dass ein datetime-Objekt zurückgegeben wird
+    """
     data = load_json(config.SYSTEM_DATE_FILE)
     if data and 'current_date' in data:
         # Ensure it's a datetime object
@@ -19,7 +32,19 @@ def get_system_date():
     return now
 
 def set_system_date(new_date):
-    """Saves the current system date."""
+    """
+    Speichert das neue Systemdatum.
+    
+    Args:
+        new_date (datetime/str): Neues Datum als datetime-Objekt oder ISO-String
+        
+    Raises:
+        TypeError: Wenn new_date weder datetime noch String ist
+        
+    Hinweis:
+        - Konvertiert datetime in ISO-String
+        - Speichert das Datum in der Systemdatei
+    """
     if isinstance(new_date, str):
         new_date_str = new_date
     elif isinstance(new_date, datetime):
@@ -30,7 +55,21 @@ def set_system_date(new_date):
     save_json(config.SYSTEM_DATE_FILE, {"current_date": new_date_str})
 
 def process_time_event(time_event_data):
-    """Processes a time event, advances the system clock, and triggers periodic functions."""
+    """
+    Verarbeitet ein Zeiteignis, aktualisiert die Systemzeit und löst periodische Funktionen aus.
+    
+    Args:
+        time_event_data (dict): Zeiteignisdaten mit:
+            - date: Neues Datum als ISO-String
+            
+    Hinweis:
+        - Aktualisiert zuerst das Systemdatum
+        - Führt periodische Aufgaben in dieser Reihenfolge aus:
+            1. Tägliche Strafzinsberechnung
+            2. Monatliche Kredittilgungen (am 1. des Monats)
+            3. Vierteljährliche Kontogebühren (am 1. des Monats)
+            4. Prüfung auf Abschreibungen (am 1. des Monats)
+    """
     # Import here to avoid circular imports
 
     new_date_str = time_event_data.get('date')
@@ -53,12 +92,14 @@ def process_time_event(time_event_data):
     set_system_date(new_date)
 
     # --- Trigger Periodic Functions ---
-    # Daily tasks first
-    credit_service.calculate_daily_penalties(new_date)
+    # Reihenfolge geändert: Monatliche Zahlungen ZUERST, damit der Status für Strafzinsen korrekt ist.
 
     # Monthly tasks (check if the new date is the start of a month or specific day)
     if new_date.day == 1:
         credit_service.process_monthly_credit_payments(new_date)
+
+    # Daily tasks (jetzt nach monatlichen Zahlungen, um blockierten Status zu erfassen)
+    credit_service.calculate_daily_penalties(new_date)
 
     # Quarterly tasks
     if new_date.day == 1:

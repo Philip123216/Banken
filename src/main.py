@@ -1,3 +1,7 @@
+# src/main.py
+# Hauptmodul für das Smart-Phone Haifisch Bank System
+# Steuert die Ausführung der Bankensimulation und verarbeitet Transaktionsdateien
+
 import os
 import sys
 from src.utils import setup_directories
@@ -9,8 +13,18 @@ from src.ledger_service import update_bank_ledger, validate_bank_system, load_ba
 from src.time_processing_service import get_system_date
 
 def run_simulation(transaction_files_list):
+    """
+    Führt die Bankensimulation durch, indem Transaktionsdateien in Reihenfolge verarbeitet werden.
+    
+    Args:
+        transaction_files_list (list): Liste der zu verarbeitenden Transaktionsdateien
+        
+    Hinweis:
+        - Initialisiert Verzeichnisse und Hauptbuch
+        - Verarbeitet jede Transaktionsdatei in der gegebenen Reihenfolge
+        - Führt abschließende Systemvalidierung durch
+    """
     print(f"run_simulation called with files: {transaction_files_list}")
-    """Runs the simulation by processing a list of transaction files in order."""
     setup_directories()
     load_bank_ledger()  # Initialize ledger if needed
     get_system_date()  # Initialize system date if needed
@@ -37,7 +51,7 @@ if __name__ == "__main__":
     # --- Simulationslauf definieren ---
     print("\n--- Simulation Run ---")
 
-    # Check if a transaction file was provided as a command-line argument
+    # Prüfen ob eine Transaktionsdatei als Kommandozeilenargument übergeben wurde
     if len(sys.argv) > 1:
         transaction_file = sys.argv[1]
         transaction_file_absolute = os.path.join(PROJECT_ROOT, transaction_file)
@@ -48,15 +62,15 @@ if __name__ == "__main__":
         else:
             print(f"Error: Transaction file not found: {transaction_file_absolute}")
     else:
-        # Default to processing example files if no argument provided
+        # Standardmäßig Beispieltransaktionen verarbeiten wenn kein Argument übergeben wurde
         transaction_files_to_process_relative = [
-            "example_transactions_create_customers.json",
-            "example_transactions_create_accounts.json",
-            "example_transactions_month1.json",
-            "example_transactions_test_closure.json"
+            "example_transactions_create_customers.json",  # Kunden anlegen
+            "example_transactions_create_accounts.json",   # Konten erstellen
+            "example_transactions_month1.json",           # Erste Monatstransaktionen
+            "example_transactions_test_closure.json"      # Kontoschließungen testen
         ]
 
-        # Create absolute paths
+        # Absolute Pfade erstellen
         print("Creating absolute paths...")
         transaction_files_to_process_absolute = [
             os.path.join(PROJECT_ROOT, f) for f in transaction_files_to_process_relative
@@ -64,7 +78,7 @@ if __name__ == "__main__":
 
         print(f"Planning to process: {transaction_files_to_process_absolute}")
 
-        # Check which files exist
+        # Prüfen welche Dateien existieren
         print("\nChecking for existing files...")
         existing_files = []
         for f_abs, f_rel in zip(transaction_files_to_process_absolute, transaction_files_to_process_relative):
@@ -74,10 +88,10 @@ if __name__ == "__main__":
             else:
                 print(f"ERROR: Required transaction file not found: {f_rel} (expected at {f_abs})")
                 print(f"       Please create the file or check the filename and its location (should be in {PROJECT_ROOT}).")
-                existing_files = []  # Clear the list to prevent partial run
+                existing_files = []  # Liste leeren um teilweise Ausführung zu verhindern
                 break
 
-        # Run simulation if all files were found
+        # Simulation starten wenn alle Dateien gefunden wurden
         if existing_files:
             print(f"\nStarting processing with files: {existing_files}")
             run_simulation(existing_files)
